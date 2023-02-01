@@ -1,0 +1,2 @@
+dxc.exe .\src\shaders\hlsl\fullscreen_quad.hlsl -T vs_6_0 -E "vs_main" -Fo .\src\shaders\spirv\fullscreen_quad_vs.spirv
+glslc.exe .\src\shaders\glsl\fullscreen_quad.vert -o .\src\shaders\spirv\fullscreen_quad_vs.spv

@@ -3,9 +3,9 @@ use std::collections::VecDeque;
 use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceError, Features, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}};
 
-use crate::app::App;
+use crate::{app::App, app_variants::{AppVariant, ShaderType}};
 
-pub async fn run<T: App + 'static>(title: &str) -> Result<(), CreateSurfaceError>{
+pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Result<(), CreateSurfaceError>{
     env_logger::init();
     
     let event_loop = EventLoop::new();
@@ -26,7 +26,10 @@ pub async fn run<T: App + 'static>(title: &str) -> Result<(), CreateSurfaceError
         .request_device(
             &DeviceDescriptor {
                 label: None,
-                features: Features::empty(),
+                features: match app_variant.shader_type{
+                    ShaderType::SPIRV => Features::SPIRV_SHADER_PASSTHROUGH,
+                    _ => Features::empty(),
+                },
                 limits: Limits::default()
             },
             None
@@ -42,7 +45,7 @@ pub async fn run<T: App + 'static>(title: &str) -> Result<(), CreateSurfaceError
         view_formats: vec![caps.formats[0]]
     };
     surface.configure(&device, &surface_config);    
-    let mut app_instance = T::new(&surface_config, &device, queue);
+    let mut app_instance = T::new(&surface_config, &device, queue, app_variant.shader_type);
 
     let mut moment = std::time::Instant::now();
     let mut fps_data = VecDeque::new();
