@@ -1,17 +1,17 @@
-use std::{iter};
+use std::iter;
 use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, Queue, include_spirv_raw, ShaderModule, ShaderModuleDescriptor};
-use crate::{app::App, app_variants::ShaderType};
+use crate::{app::App, app::ShaderType};
 
 pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     queue: Queue,
 }
 
-pub struct SimpleQuadApp {
+pub struct SimpleTriApp {
     renderer : Renderer,
 }
 
-impl App for SimpleQuadApp{
+impl App for SimpleTriApp{
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
@@ -20,14 +20,14 @@ impl App for SimpleQuadApp{
     ) -> Self {
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
-                label: Some("Full-screen quad pipeline layout"),
+                label: Some("Full-screen triangle pipeline layout"),
                 bind_group_layouts: &[],
                 push_constant_ranges: &[],
             }
         );
 
         let renderer = Renderer {
-            pipeline: SimpleQuadApp::create_render_pipeline(device, &pipeline_layout, sc.format, shader_type),
+            pipeline: SimpleTriApp::create_render_pipeline(device, &pipeline_layout, sc.format, shader_type),
             queue
         };
 
@@ -79,7 +79,7 @@ impl App for SimpleQuadApp{
     }
 }
 
-impl SimpleQuadApp {
+impl SimpleTriApp {
     fn create_render_pipeline(
         device: &wgpu::Device,
         pipeline_layout: &wgpu::PipelineLayout,
@@ -91,10 +91,10 @@ impl SimpleQuadApp {
             ShaderType::WGSL => {
                 let shader_module = device.create_shader_module(ShaderModuleDescriptor{
                     label: Some("WGSL shader"),
-                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/fullscreen_quad.wgsl").into()),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/fullscreen_tri.wgsl").into()),
                 });
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("SimpleQuadApp pipeline"),
+                    label: Some("SimpleTriApp pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &shader_module,
@@ -135,11 +135,11 @@ impl SimpleQuadApp {
                 let vs_shader_module: ShaderModule;
                 let fs_shader_module: ShaderModule;
                 unsafe {
-                    fs_shader_module = device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_quad_fs.spv"));
-                    vs_shader_module = device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_quad_vs.spv"));
+                    fs_shader_module = device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_tri_fs.spv"));
+                    vs_shader_module = device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_tri_vs.spv"));
                 };
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("SimpleQuadApp pipeline"),
+                    label: Some("SimpleTriApp pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &vs_shader_module,
