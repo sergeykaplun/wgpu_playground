@@ -4,8 +4,8 @@ use simple_tri_app::SimpleTriApp;
 use windowed_app::run;
 
 mod windowed_app;
-mod simple_tri_app;
 mod app;
+mod simple_tri_app;
 
 fn main() {
     let app_variant = AppVariant::from_args();

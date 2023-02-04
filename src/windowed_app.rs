@@ -1,7 +1,7 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, path::Path};
 
 use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceError, Features, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
-use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}};
+use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
 
 use crate::app::{App, AppVariant, ShaderType};
 
@@ -9,7 +9,15 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
     env_logger::init();
     
     let event_loop = EventLoop::new();
-    let window = winit::window::WindowBuilder::new().with_title(title).build(&event_loop).unwrap();
+    let icon = image::open(Path::new("./assets/logo.png"))
+        .expect("Failed to open icon path")
+        .to_rgba8();
+    let (icon_width, icon_height) = icon.dimensions();
+    let window = winit::window::WindowBuilder::new()
+        .with_window_icon(Some(
+            Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap(),
+        ))
+        .with_title(title).build(&event_loop).unwrap();
     let size = window.inner_size();
 
     let instance = wgpu::Instance::new(InstanceDescriptor{
@@ -35,7 +43,7 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
             None
         ).await.unwrap();
     let caps = surface.get_capabilities(&adapter);
-    let surface_config = SurfaceConfiguration { 
+    let mut surface_config = SurfaceConfiguration { 
         usage: TextureUsages::RENDER_ATTACHMENT,
         format: caps.formats[0],
         width: size.width, 
@@ -91,7 +99,11 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                                 },
                             ..
                         } => *control_flow = ControlFlow::Exit,
-                        WindowEvent::Resized(_physical_size) => {
+                        WindowEvent::Resized(physical_size) => {
+                            surface_config.width = physical_size.width;
+                            surface_config.height = physical_size.height;
+                            surface.configure(&device, &surface_config);
+
                             app_instance.resize(&surface_config, &device);
                         }
                         WindowEvent::ScaleFactorChanged { .. } => {
