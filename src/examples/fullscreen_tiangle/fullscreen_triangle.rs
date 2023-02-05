@@ -9,12 +9,12 @@ pub struct Renderer {
     queue: Queue,
 }
 
-pub struct SimpleTriApp {
+pub struct FullscreenTriangleExample {
     renderer : Renderer,
     resolution : Option<[u32; 2]>
 }
 
-impl App for SimpleTriApp{
+impl App for FullscreenTriangleExample{
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
@@ -59,7 +59,7 @@ impl App for SimpleTriApp{
         });
 
         let renderer = Renderer {
-            pipeline: SimpleTriApp::create_render_pipeline(device, &pipeline_layout, sc.format, shader_type),
+            pipeline: FullscreenTriangleExample::create_render_pipeline(device, &pipeline_layout, sc.format, shader_type),
             uniform_buffer,
             uniform_bindgroup,
             queue
@@ -122,7 +122,7 @@ impl App for SimpleTriApp{
     }
 }
 
-impl SimpleTriApp {
+impl FullscreenTriangleExample {
     fn create_render_pipeline(
         device: &wgpu::Device,
         pipeline_layout: &wgpu::PipelineLayout,

@@ -1,13 +1,15 @@
 use app::AppVariant;
 use structopt::StructOpt;
-use simple_tri_app::SimpleTriApp;
+use fullscreen_triangle::FullscreenTriangleExample;
 use windowed_app::run;
 
 mod windowed_app;
 mod app;
-mod simple_tri_app;
+
+#[path = "./examples/fullscreen_tiangle/fullscreen_triangle.rs"]
+mod fullscreen_triangle;
 
 fn main() {
     let app_variant = AppVariant::from_args();
-    pollster::block_on(run::<SimpleTriApp>("FullscreenTriApp", app_variant)).expect("FullscreenTriApp exited unexpectedly");
+    pollster::block_on(run::<FullscreenTriangleExample>("FullscreenTriangleExample", app_variant)).expect("FullscreenTriangleExample exited unexpectedly");
 }
