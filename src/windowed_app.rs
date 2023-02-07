@@ -26,7 +26,7 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
     });
     let surface = unsafe{ instance.create_surface(&window)? };
     let adapter = instance.request_adapter(&RequestAdapterOptions{
-        power_preference: wgpu::PowerPreference::default(),
+        power_preference: wgpu::PowerPreference::HighPerformance,
         force_fallback_adapter: false,
         compatible_surface: Some(&surface),
     }).await.unwrap();
@@ -87,7 +87,7 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                //if !state.input(event)
+                if !app_instance.process_input(event)
                 {
                     match event {
                         WindowEvent::CloseRequested | WindowEvent::KeyboardInput {

@@ -1,5 +1,6 @@
 use wgpu::Queue;
 use structopt::StructOpt;
+use winit::event::WindowEvent;
 use std::str::FromStr;
 
 pub trait App {
@@ -9,6 +10,7 @@ pub trait App {
         queue: Queue,
         shader_type: ShaderType
     ) -> Self;
+    fn process_input(&mut self, event: &WindowEvent) -> bool;
     fn resize(&mut self, sc: &wgpu::SurfaceConfiguration, device: &wgpu::Device);
     fn tick(&mut self, delta: f32);
     fn render(&mut self, frame: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError>;

@@ -120,6 +120,10 @@ impl App for FullscreenTriangleExample{
 
         Ok(())
     }
+
+    fn process_input(&mut self, event: &winit::event::WindowEvent) -> bool {
+        false
+    }
 }
 
 impl FullscreenTriangleExample {
@@ -209,10 +213,7 @@ impl FullscreenTriangleExample {
                         entry_point: "main",
                         targets: &[Some(ColorTargetState {
                             format: tex_format,
-                            blend: Some(wgpu::BlendState {
-                                color: wgpu::BlendComponent::REPLACE,
-                                alpha: wgpu::BlendComponent::REPLACE,
-                            }),
+                            blend: None,
                             write_mask: wgpu::ColorWrites::ALL,
                         })]
                     }),
