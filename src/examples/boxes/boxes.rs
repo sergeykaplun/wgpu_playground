@@ -1,9 +1,9 @@
 use std::iter;
 
-use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, BindGroup, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState};
+use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState};
 use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, camera::{Camera, CameraUniform, CameraController}};
+use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
 
 static CUBE_DATA: &'static [f32] = &[
     -1.0,-1.0,-1.0, -1.0,-1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0,-1.0, -1.0,-1.0,-1.0, -1.0, 1.0,-1.0,
@@ -19,15 +19,11 @@ struct Renderer {
     render_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
     vertex_count: u32,
-    camera_buffer: Buffer,
-    camera_uniform: CameraUniform,
-    camera_bind_group: BindGroup,
 }
 
 pub struct BoxesExample {
     renderer: Renderer,
-    camera: Camera,
-    camera_controller: CameraController
+    camera: ArcballCamera,
 }
 
 impl App for BoxesExample {
@@ -58,43 +54,12 @@ impl App for BoxesExample {
             contents: bytemuck::cast_slice(CUBE_DATA),
             usage: BufferUsages::VERTEX,
         });
-
-        let camera = Camera {
-            eye: (0.0, 0.0, 10.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
-            up: cgmath::Vector3::unit_y(),
-            aspect: sc.width as f32 / sc.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
-
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform.view_proj]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
         
-        let camera_controller = CameraController::new(0.5);
+        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
 
         let vertex_count = (CUBE_DATA.len()/3) as u32;
-        Self { renderer: Renderer { queue, render_pipeline, vertex_buffer, vertex_count, camera_buffer, camera_uniform, camera_bind_group}, camera, camera_controller }
+        Self { renderer: Renderer { queue, render_pipeline, vertex_buffer, vertex_count, }, camera }
     }
-
-    fn resize(&mut self, _sc: &wgpu::SurfaceConfiguration, _device: &wgpu::Device) {}
-
-    fn tick(&mut self, _delta: f32) {}
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
         let output = surface.get_current_texture()?;
@@ -108,11 +73,6 @@ impl App for BoxesExample {
             });
 
         {
-            self.camera_controller.update_camera(&mut self.camera);
-            self.renderer.camera_uniform.update_view_proj(&self.camera);
-            let data = self.renderer.camera_uniform.view_proj;
-            self.renderer.queue.write_buffer(&self.renderer.camera_buffer, 0, bytemuck::cast_slice(&[data]));
-
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -132,7 +92,7 @@ impl App for BoxesExample {
             });
         
             render_pass.set_vertex_buffer(0, self.renderer.vertex_buffer.slice(..));
-            render_pass.set_bind_group(0, &self.renderer.camera_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
             render_pass.set_pipeline(&self.renderer.render_pipeline);
             render_pass.draw(0..self.renderer.vertex_count, 0..1);
         }
@@ -144,7 +104,11 @@ impl App for BoxesExample {
     }
 
     fn process_input(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_events(event)
+        self.camera.input(event)
+    }
+
+    fn tick(&mut self, delta: f32) {
+        self.camera.tick(delta, &self.renderer.queue);
     }
 }
 

@@ -1,5 +1,5 @@
 use std::iter;
-use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, Queue, include_spirv_raw, ShaderModule, ShaderModuleDescriptor, ShaderStages, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindGroupEntry, util::DeviceExt, BindGroupDescriptor, BindGroup, Buffer};
+use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, Queue, include_spirv_raw, ShaderModule, ShaderModuleDescriptor, ShaderStages, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindGroupEntry, util::DeviceExt, BindGroupDescriptor, BindGroup, Buffer, VertexState};
 use crate::{app::App, app::ShaderType};
 
 pub struct Renderer {
@@ -72,8 +72,6 @@ impl App for FullscreenTriangleExample{
         self.resolution = Some([sc.width, sc.height]);
     }
 
-    fn tick(&mut self, _delta: f32) {}
-
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
         let output = surface.get_current_texture()?;
         let view = output
@@ -120,10 +118,6 @@ impl App for FullscreenTriangleExample{
 
         Ok(())
     }
-
-    fn process_input(&mut self, event: &winit::event::WindowEvent) -> bool {
-        false
-    }
 }
 
 impl FullscreenTriangleExample {
@@ -133,93 +127,74 @@ impl FullscreenTriangleExample {
         tex_format: TextureFormat,
         shader_type: ShaderType
     ) -> wgpu::RenderPipeline {
-        //TODO refactor this branching
+        let color_states = [Some(ColorTargetState {
+            format: tex_format,
+            blend: Some(wgpu::BlendState {
+                color: wgpu::BlendComponent::REPLACE,
+                alpha: wgpu::BlendComponent::REPLACE,
+            }),
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
+        let mut spirv_modules : Vec<ShaderModule> = vec![];
+
+        let vertex_state: VertexState;
+        let fragment_state: FragmentState;
         match shader_type {
             ShaderType::WGSL => {
-                let shader_module = device.create_shader_module(ShaderModuleDescriptor{
+                spirv_modules.push(device.create_shader_module(ShaderModuleDescriptor{
                     label: Some("WGSL shader"),
                     source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/fullscreen_tri.wgsl").into()),
-                });
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("SimpleTriApp pipeline"),
-                    layout: Some(pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &shader_module,
-                        entry_point: "vs_main",
-                        buffers: &[],
-                    },
-                    primitive: PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList,
-                        strip_index_format: None,
-                        front_face: wgpu::FrontFace::Ccw,
-                        cull_mode: Some(Face::Back),
-                        unclipped_depth: false,
-                        polygon_mode: wgpu::PolygonMode::Fill,
-                        conservative: false
-                    },
-                    depth_stencil: None,
-                    multisample: MultisampleState {
-                        count: 1,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
-                    },
-                    fragment: Some(FragmentState {
-                        module: &shader_module,
-                        entry_point: "fs_main",
-                        targets: &[Some(ColorTargetState {
-                            format: tex_format,
-                            blend: Some(wgpu::BlendState {
-                                color: wgpu::BlendComponent::REPLACE,
-                                alpha: wgpu::BlendComponent::REPLACE,
-                            }),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })]
-                    }),
-                    multiview: None,
-                })
+                }));
+                vertex_state = wgpu::VertexState {
+                    module: &spirv_modules[0],
+                    entry_point: "vs_main",
+                    buffers: &[],
+                };
+                fragment_state = FragmentState {
+                    module: &spirv_modules[0],
+                    entry_point: "fs_main",
+                    targets: &color_states
+                }
             },
             ShaderType::SPIRV => {
-                let vs_shader_module: ShaderModule;
-                let fs_shader_module: ShaderModule;
                 unsafe {
-                    fs_shader_module = device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_tri_fs.spv"));
-                    vs_shader_module = device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_tri_vs.spv"));
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_tri_vs.spv")));
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/fullscreen_tri_fs.spv")));
                 };
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("SimpleTriApp pipeline"),
-                    layout: Some(pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_shader_module,
-                        entry_point: "main",
-                        buffers: &[],
-                    },
-                    primitive: PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList,
-                        strip_index_format: None,
-                        front_face: wgpu::FrontFace::Ccw,
-                        cull_mode: Some(Face::Back),
-                        unclipped_depth: false,
-                        polygon_mode: wgpu::PolygonMode::Fill,
-                        conservative: false
-                    },
-                    depth_stencil: None,
-                    multisample: MultisampleState {
-                        count: 1,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
-                    },
-                    fragment: Some(FragmentState {
-                        module: &fs_shader_module,
-                        entry_point: "main",
-                        targets: &[Some(ColorTargetState {
-                            format: tex_format,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })]
-                    }),
-                    multiview: None,
-                })
+                vertex_state = wgpu::VertexState {
+                    module: &spirv_modules[0],
+                    entry_point: "main",
+                    buffers: &[],
+                };
+                fragment_state = FragmentState {
+                    module: &spirv_modules[1],
+                    entry_point: "main",
+                    targets: &color_states
+                }
             },
         }
+
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("SimpleTriApp pipeline"),
+            layout: Some(pipeline_layout),
+            vertex: vertex_state,
+            primitive: PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(fragment_state),
+            multiview: None,
+        })
     }
 }

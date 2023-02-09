@@ -1,18 +1,26 @@
-use wgpu::Queue;
+use wgpu::{Queue, Features};
 use structopt::StructOpt;
 use winit::event::WindowEvent;
 use std::str::FromStr;
 
 pub trait App {
+    fn get_extra_device_features(app_variant: AppVariant) -> Features {
+        match app_variant.shader_type {
+            ShaderType::WGSL => Features::empty(),
+            ShaderType::SPIRV => Features::SPIRV_SHADER_PASSTHROUGH,
+        }
+    }
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: Queue,
         shader_type: ShaderType
     ) -> Self;
-    fn process_input(&mut self, event: &WindowEvent) -> bool;
-    fn resize(&mut self, sc: &wgpu::SurfaceConfiguration, device: &wgpu::Device);
-    fn tick(&mut self, delta: f32);
+    fn process_input(&mut self, _event: &WindowEvent) -> bool {
+        false
+    }
+    fn resize(&mut self, _sc: &wgpu::SurfaceConfiguration, _device: &wgpu::Device){}
+    fn tick(&mut self, _delta: f32){}
     fn render(&mut self, frame: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError>;
 }
 

@@ -34,10 +34,7 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
         .request_device(
             &DeviceDescriptor {
                 label: None,
-                features: match app_variant.shader_type{
-                    ShaderType::SPIRV => Features::SPIRV_SHADER_PASSTHROUGH,
-                    _ => Features::empty(),
-                },
+                features: T::get_extra_device_features(app_variant),
                 limits: Limits::default()
             },
             None

@@ -8,6 +8,8 @@ mod windowed_app;
 mod app;
 mod camera;
 
+extern crate nalgebra_glm as glm;
+
 #[path = "./examples/fullscreen_tiangle/fullscreen_triangle.rs"]
 mod fullscreen_triangle;
 #[path = "./examples/boxes/boxes.rs"]
