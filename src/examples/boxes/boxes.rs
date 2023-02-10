@@ -1,6 +1,6 @@
 use std::iter;
 
-use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView};
+use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup};
 use winit::event::WindowEvent;
 
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
@@ -24,7 +24,10 @@ static CUBE_INDICES: &[u16] = &[
 ];
 
 static FLOOR_DATA: &'static [f32] = &[
-    -1.0, -1.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0,
+    -20.0, -1.0, -20.0, 0.0, 0.0,
+    -20.0, -1.0,  20.0, 0.0, 1.0, 
+     20.0, -1.0,  20.0, 1.0, 1.0,
+     20.0, -1.0, -20.0, 1.0, 0.0,
 ];
 
 static FLOOR_INDICES: &[u16] = &[
@@ -33,19 +36,26 @@ static FLOOR_INDICES: &[u16] = &[
 
 struct Renderer {
     queue: Queue,
-    render_pipeline: RenderPipeline,
     depth_tex_view: TextureView,
-    
+    floor_tex_bind_group: BindGroup,
+
+    cube_render_pipeline: RenderPipeline,
     cube_vertex_buffer: Buffer,
     cube_index_buffer: Buffer,
     cube_index_count: u32,
     cube_instance_buffer: Buffer,
     cube_instances_count: u32,
+
+    floor_render_pipeline: RenderPipeline,
+    floor_vertex_buffer: Buffer,
+    floor_index_buffer: Buffer,
+    floor_index_count: u32,
 }
 
 pub struct BoxesExample {
     renderer: Renderer,
     camera: ArcballCamera,
+    time_in_flight: f32,
 }
 
 impl App for BoxesExample {
@@ -70,11 +80,31 @@ impl App for BoxesExample {
             label: Some("camera_bind_group_layout"),
         });
 
-        let render_pipeline = BoxesExample::create_pipeline(device, sc.format, &camera_bind_group_layout, shader_type);
-        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
-        let depth_tex_view = Self::create_depth_texture(sc, device);
+        let floor_tex_bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false 
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                        count: None,
+                    }
+                ],
+            label: Some("camera_bind_group_layout"),
+        });
 
-        
+        let cube_render_pipeline = BoxesExample::create_cube_rp(device, sc.format, &camera_bind_group_layout, shader_type);
+        let floor_render_pipeline = BoxesExample::create_floor_rp(device, sc.format, &camera_bind_group_layout, &floor_tex_bind_group_layout, shader_type);
 
         let cube_vertex_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("cube verices"),
@@ -89,7 +119,7 @@ impl App for BoxesExample {
         let instances: Vec<f32> = (0..100).flat_map(|id|{
             let x = (id/10 - 5) as f32;
             let z = (id%10 - 5) as f32;
-            vec![x * 3., 0.0, z * 3.]
+            vec![x * 3., 0.0, z * 3., 0.0]
         }).collect();
 
         let cube_instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
@@ -98,21 +128,55 @@ impl App for BoxesExample {
             usage: BufferUsages::VERTEX,
         });
         
+        let floor_vertex_buffer = device.create_buffer_init(&BufferInitDescriptor{
+            label: Some("floor verices"),
+            contents: bytemuck::cast_slice(FLOOR_DATA),
+            usage: BufferUsages::VERTEX,
+        });
+        let floor_index_buffer = device.create_buffer_init(&BufferInitDescriptor{
+            label: Some("floor indices"),
+            contents: bytemuck::cast_slice(FLOOR_INDICES),
+            usage: BufferUsages::INDEX,
+        });
+        let (tex_view, tex_sampler) = Self::create_voronoi_texture(device, &queue);
+        let floor_tex_bind_group = device.create_bind_group(&BindGroupDescriptor{
+            label: Some("floor_tex_bindgroup"),
+            layout: &floor_tex_bind_group_layout,
+            entries: &[
+                BindGroupEntry{
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&tex_view),
+                },
+                BindGroupEntry{
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&tex_sampler),
+                }
+            ],
+        });
+
+
+        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
+        let depth_tex_view = Self::create_depth_texture(sc, device);
         Self {
             renderer: Renderer {
                 queue,
-                render_pipeline,
                 depth_tex_view,
-                
+                floor_tex_bind_group,
+
+                cube_render_pipeline,
                 cube_vertex_buffer,
                 cube_index_buffer,
                 cube_index_count: CUBE_INDICES.len() as u32,
                 cube_instance_buffer,
                 cube_instances_count: 100,
 
-
+                floor_render_pipeline,
+                floor_vertex_buffer,
+                floor_index_buffer,
+                floor_index_count: FLOOR_INDICES.len() as u32,
             },
-            camera
+            camera,
+            time_in_flight: 0.0,
         }
     }
 
@@ -153,12 +217,19 @@ impl App for BoxesExample {
                 })
             });
         
+            render_pass.set_pipeline(&self.renderer.cube_render_pipeline);
             render_pass.set_vertex_buffer(0, self.renderer.cube_vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.renderer.cube_instance_buffer.slice(..));
             render_pass.set_index_buffer(self.renderer.cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
-            render_pass.set_pipeline(&self.renderer.render_pipeline);
             render_pass.draw_indexed(0..self.renderer.cube_index_count, 0, 0..self.renderer.cube_instances_count);
+
+            render_pass.set_pipeline(&self.renderer.floor_render_pipeline);
+            render_pass.set_vertex_buffer(0, self.renderer.floor_vertex_buffer.slice(..));
+            render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.renderer.floor_tex_bind_group, &[]);
+            render_pass.set_index_buffer(self.renderer.floor_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.renderer.floor_index_count, 0, 0..1);
         }
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
@@ -173,11 +244,12 @@ impl App for BoxesExample {
 
     fn tick(&mut self, delta: f32) {
         self.camera.tick(delta, &self.renderer.queue);
+        self.time_in_flight += delta;
     }
 }
 
 impl BoxesExample {
-    fn create_pipeline(device: &wgpu::Device, tex_format: TextureFormat, cam_bgl: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
+    fn create_cube_rp(device: &wgpu::Device, tex_format: TextureFormat, cam_bgl: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
         let buffer_layout = 
         [
             VertexBufferLayout{
@@ -195,10 +267,10 @@ impl BoxesExample {
                 }],
             },
             VertexBufferLayout{
-                array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                array_stride: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
                 step_mode: wgpu::VertexStepMode::Instance,
                 attributes: &[VertexAttribute{
-                    format: wgpu::VertexFormat::Float32x3,
+                    format: wgpu::VertexFormat::Float32x4,
                     offset: 0,
                     shader_location: 2,
                 }],
@@ -283,6 +355,108 @@ impl BoxesExample {
             fragment: Some(fragment_state),
             multiview: None,
         })
+        
+    }
+
+    fn create_floor_rp(device: &wgpu::Device, tex_format: TextureFormat, cam_bgl: &BindGroupLayout, tex_bgl: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
+        let buffer_layout = 
+        [
+            VertexBufferLayout{
+                array_stride: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[VertexAttribute{
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                VertexAttribute{
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                }],
+            }
+        ];
+
+        let color_states = [Some(ColorTargetState {
+            format: tex_format,
+            blend: Some(wgpu::BlendState {
+                color: wgpu::BlendComponent::REPLACE,
+                alpha: wgpu::BlendComponent::REPLACE,
+            }),
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
+        let mut spirv_modules : Vec<ShaderModule> = vec![];
+
+        let vertex_state: VertexState;
+        let fragment_state: FragmentState;
+        match shader_type {
+            ShaderType::WGSL => {
+                spirv_modules.push(device.create_shader_module(ShaderModuleDescriptor{
+                    label: Some("WGSL shader"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/floor.wgsl").into()),
+                }));
+                vertex_state = wgpu::VertexState {
+                    module: &spirv_modules[0],
+                    entry_point: "vs_main",
+                    buffers: &buffer_layout,
+                };
+                fragment_state = FragmentState {
+                    module: &spirv_modules[0],
+                    entry_point: "fs_main",
+                    targets: &color_states
+                }
+            },
+            ShaderType::SPIRV => {
+                //TODO error here
+                unsafe {
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/boxes.vs.spv")));
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/boxes.fs.spv")));
+                };
+                vertex_state = wgpu::VertexState {
+                    module: &spirv_modules[0],
+                    entry_point: "main",
+                    buffers: &buffer_layout,
+                };
+                fragment_state = FragmentState {
+                    module: &spirv_modules[1],
+                    entry_point: "main",
+                    targets: &color_states
+                }
+            },
+        }
+        
+        let pipeline_layout = device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                label: Some("Floor pipeline layout"),
+                bind_group_layouts: &[cam_bgl, tex_bgl],
+                push_constant_ranges: &[],
+            }
+        );
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Floor pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: vertex_state,
+            primitive: PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false
+            },
+            depth_stencil: Some(DepthStencilState{
+                format: Self::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
+            multisample: MultisampleState::default(),
+            fragment: Some(fragment_state),
+            multiview: None,
+        })
+        
     }
 }
 
@@ -309,5 +483,51 @@ impl BoxesExample {
         });
 
         depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    fn create_voronoi_texture(device: &wgpu::Device, queue: &Queue) -> (TextureView, Sampler) {
+        let size = 256u32;
+        let texels: Vec<f32> = (0..size * size).flat_map(|id| {
+            let uv = glm::Vec2::new((id/256) as f32, (id%256) as f32) / 256.0;
+            [uv.x, uv.y, 0., 1.]
+        }).collect();
+        let texture_extent = wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: texture_extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        queue.write_texture(
+            texture.as_image_copy(),
+            &bytemuck::cast_slice(&texels),
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(size * 16),
+                rows_per_image: None,
+            },
+            texture_extent,
+        );
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        (texture_view, sampler)
     }
 }

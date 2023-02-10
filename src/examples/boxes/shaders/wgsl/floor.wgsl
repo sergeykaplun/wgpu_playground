@@ -7,8 +7,6 @@ var<uniform> camera: CameraUniform;
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) uv: vec2<f32>,
-    
-    @location(2) offset: vec4<f32>
 }
 
 struct VertexOutput {
@@ -20,12 +18,16 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.uv = in.uv;
-    out.clip_pos = camera.view_proj * vec4<f32>(in.position + in.offset.xyz, 1.0);
+    out.clip_pos = camera.view_proj * vec4<f32>(in.position, 1.0);
     return out;
 }
 
+@group(1) @binding(0)
+var t_voronoi: texture_2d<f32>;
+@group(1) @binding(1)
+var s_voronoi: sampler;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    //let mask = smoothstep(0.325, 0.35, distance(in.uv, vec2(0.5, 0.5)));
-    return vec4(in.uv.y);
+    return textureSample(t_voronoi, s_voronoi, in.uv);
 }
