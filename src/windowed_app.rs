@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, path::Path};
 
-use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceError, Features, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
+use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceError, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
 
-use crate::app::{App, AppVariant, ShaderType};
+use crate::app::{App, AppVariant};
 
 pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Result<(), CreateSurfaceError>{
     env_logger::init();

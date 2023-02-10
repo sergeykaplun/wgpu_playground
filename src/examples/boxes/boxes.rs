@@ -1,6 +1,6 @@
 use std::iter;
 
-use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState};
+use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView};
 use winit::event::WindowEvent;
 
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
@@ -17,8 +17,11 @@ static CUBE_DATA: &'static [f32] = &[
 struct Renderer {
     queue: Queue,
     render_pipeline: RenderPipeline,
+    depth_tex_view: TextureView,
     vertex_buffer: Buffer,
     vertex_count: u32,
+
+    instance_buffer: Buffer,
 }
 
 pub struct BoxesExample {
@@ -54,11 +57,24 @@ impl App for BoxesExample {
             contents: bytemuck::cast_slice(CUBE_DATA),
             usage: BufferUsages::VERTEX,
         });
+
+        let instances: Vec<f32> = (0..100).flat_map(|id|{
+            let x = (id/10 - 5) as f32;
+            let z = (id%10 - 5) as f32;
+            vec![x * 3., 0.0, z * 3.]
+        }).collect();
+
+        let instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
+            label: Some("Instance array buffer"),
+            contents: bytemuck::cast_slice(&instances),
+            usage: BufferUsages::VERTEX,
+        });
         
         let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
+        let depth_tex_view = Self::create_depth_texture(sc, device);
 
         let vertex_count = (CUBE_DATA.len()/3) as u32;
-        Self { renderer: Renderer { queue, render_pipeline, vertex_buffer, vertex_count, }, camera }
+        Self { renderer: Renderer { queue, render_pipeline, depth_tex_view, vertex_buffer, vertex_count, instance_buffer}, camera }
     }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
@@ -88,13 +104,21 @@ impl App for BoxesExample {
                         store: true,
                     },
                 })],
-                depth_stencil_attachment: None
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: &self.renderer.depth_tex_view,
+                    depth_ops: Some(Operations{
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: false,
+                    }),
+                    stencil_ops: None,
+                })
             });
         
             render_pass.set_vertex_buffer(0, self.renderer.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.renderer.instance_buffer.slice(..));
             render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
             render_pass.set_pipeline(&self.renderer.render_pipeline);
-            render_pass.draw(0..self.renderer.vertex_count, 0..1);
+            render_pass.draw(0..self.renderer.vertex_count, 0..100);
         }
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
@@ -114,15 +138,28 @@ impl App for BoxesExample {
 
 impl BoxesExample {
     fn create_pipeline(device: &wgpu::Device, tex_format: TextureFormat, cam_bgl: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
-        let vertex_buffer_layout = [VertexBufferLayout{
-            array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[VertexAttribute{
-                format: wgpu::VertexFormat::Float32x3,
-                offset: 0,
-                shader_location: 0,
-            }],
-        }];
+        let buffer_layout = 
+        [
+            VertexBufferLayout{
+                array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[VertexAttribute{
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 0,
+                }],
+            },
+            VertexBufferLayout{
+                array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &[VertexAttribute{
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 1,
+                }],
+            }
+        ];
+
         let color_states = [Some(ColorTargetState {
             format: tex_format,
             blend: Some(wgpu::BlendState {
@@ -144,7 +181,7 @@ impl BoxesExample {
                 vertex_state = wgpu::VertexState {
                     module: &spirv_modules[0],
                     entry_point: "vs_main",
-                    buffers: &vertex_buffer_layout,
+                    buffers: &buffer_layout,
                 };
                 fragment_state = FragmentState {
                     module: &spirv_modules[0],
@@ -160,7 +197,7 @@ impl BoxesExample {
                 vertex_state = wgpu::VertexState {
                     module: &spirv_modules[0],
                     entry_point: "main",
-                    buffers: &vertex_buffer_layout,
+                    buffers: &buffer_layout,
                 };
                 fragment_state = FragmentState {
                     module: &spirv_modules[1],
@@ -190,14 +227,42 @@ impl BoxesExample {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false
             },
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
+            depth_stencil: Some(DepthStencilState{
+                format: Self::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
+            multisample: MultisampleState::default(),
             fragment: Some(fragment_state),
             multiview: None,
         })
+    }
+}
+
+impl BoxesExample {
+    const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+
+    fn create_depth_texture(
+        config: &wgpu::SurfaceConfiguration,
+        device: &wgpu::Device,
+    ) -> wgpu::TextureView {
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            label: None,
+            view_formats: &[],
+        });
+
+        depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 }
