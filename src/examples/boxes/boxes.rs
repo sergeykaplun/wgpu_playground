@@ -6,22 +6,41 @@ use winit::event::WindowEvent;
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
 
 static CUBE_DATA: &'static [f32] = &[
-    -1.0,-1.0,-1.0, -1.0,-1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0,-1.0, -1.0,-1.0,-1.0, -1.0, 1.0,-1.0,
-     1.0,-1.0, 1.0, -1.0,-1.0,-1.0,  1.0,-1.0,-1.0, 1.0, 1.0,-1.0,  1.0,-1.0,-1.0, -1.0,-1.0,-1.0,
-    -1.0,-1.0,-1.0, -1.0, 1.0, 1.0, -1.0, 1.0,-1.0, 1.0,-1.0, 1.0, -1.0,-1.0, 1.0, -1.0,-1.0,-1.0,
-    -1.0, 1.0, 1.0, -1.0,-1.0, 1.0,  1.0,-1.0, 1.0, 1.0, 1.0, 1.0,  1.0,-1.0,-1.0,  1.0, 1.0,-1.0,
-     1.0,-1.0,-1.0,  1.0, 1.0, 1.0,  1.0,-1.0, 1.0, 1.0, 1.0, 1.0,  1.0, 1.0,-1.0, -1.0, 1.0,-1.0,
-     1.0, 1.0, 1.0, -1.0, 1.0,-1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0,  1.0,-1.0, 1.0
+    -1.0, -1.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0,
+    -1.0, 1.0, -1.0, 1.0, 0.0, 1.0, 1.0, -1.0, 0.0, 0.0, 1.0, -1.0, -1.0, 0.0, 1.0, -1.0, -1.0, -1.0, 1.0, 1.0,
+     1.0, -1.0, -1.0, 0.0, 0.0, 1.0, 1.0, -1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 0.0, 1.0,
+    -1.0, -1.0, 1.0, 1.0, 0.0, -1.0, 1.0, 1.0, 0.0, 0.0, -1.0, 1.0, -1.0, 0.0, 1.0, -1.0, -1.0, -1.0, 1.0, 1.0,
+     1.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, -1.0, 0.0, 0.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+     1.0, -1.0, 1.0, 0.0, 0.0, -1.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 0.0, 1.0,
+];
+
+static CUBE_INDICES: &[u16] = &[
+    0, 1, 2, 2, 3, 0,
+    4, 5, 6, 6, 7, 4,
+    8, 9, 10, 10, 11, 8,
+    12, 13, 14, 14, 15, 12,
+    16, 17, 18, 18, 19, 16,
+    20, 21, 22, 22, 23, 20,
+];
+
+static FLOOR_DATA: &'static [f32] = &[
+    -1.0, -1.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0,
+];
+
+static FLOOR_INDICES: &[u16] = &[
+    0, 1, 2, 2, 3, 0,
 ];
 
 struct Renderer {
     queue: Queue,
     render_pipeline: RenderPipeline,
     depth_tex_view: TextureView,
-    vertex_buffer: Buffer,
-    vertex_count: u32,
-
-    instance_buffer: Buffer,
+    
+    cube_vertex_buffer: Buffer,
+    cube_index_buffer: Buffer,
+    cube_index_count: u32,
+    cube_instance_buffer: Buffer,
+    cube_instances_count: u32,
 }
 
 pub struct BoxesExample {
@@ -52,29 +71,49 @@ impl App for BoxesExample {
         });
 
         let render_pipeline = BoxesExample::create_pipeline(device, sc.format, &camera_bind_group_layout, shader_type);
-        let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor{
-            label: Some("Vertices array buffer"),
+        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
+        let depth_tex_view = Self::create_depth_texture(sc, device);
+
+        
+
+        let cube_vertex_buffer = device.create_buffer_init(&BufferInitDescriptor{
+            label: Some("cube verices"),
             contents: bytemuck::cast_slice(CUBE_DATA),
             usage: BufferUsages::VERTEX,
         });
-
+        let cube_index_buffer = device.create_buffer_init(&BufferInitDescriptor{
+            label: Some("cube indices"),
+            contents: bytemuck::cast_slice(CUBE_INDICES),
+            usage: BufferUsages::INDEX,
+        });
         let instances: Vec<f32> = (0..100).flat_map(|id|{
             let x = (id/10 - 5) as f32;
             let z = (id%10 - 5) as f32;
             vec![x * 3., 0.0, z * 3.]
         }).collect();
 
-        let instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
-            label: Some("Instance array buffer"),
+        let cube_instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
+            label: Some("vube instances"),
             contents: bytemuck::cast_slice(&instances),
             usage: BufferUsages::VERTEX,
         });
         
-        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
-        let depth_tex_view = Self::create_depth_texture(sc, device);
+        Self {
+            renderer: Renderer {
+                queue,
+                render_pipeline,
+                depth_tex_view,
+                
+                cube_vertex_buffer,
+                cube_index_buffer,
+                cube_index_count: CUBE_INDICES.len() as u32,
+                cube_instance_buffer,
+                cube_instances_count: 100,
 
-        let vertex_count = (CUBE_DATA.len()/3) as u32;
-        Self { renderer: Renderer { queue, render_pipeline, depth_tex_view, vertex_buffer, vertex_count, instance_buffer}, camera }
+
+            },
+            camera
+        }
     }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
@@ -114,11 +153,12 @@ impl App for BoxesExample {
                 })
             });
         
-            render_pass.set_vertex_buffer(0, self.renderer.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.renderer.instance_buffer.slice(..));
+            render_pass.set_vertex_buffer(0, self.renderer.cube_vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.renderer.cube_instance_buffer.slice(..));
+            render_pass.set_index_buffer(self.renderer.cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
             render_pass.set_pipeline(&self.renderer.render_pipeline);
-            render_pass.draw(0..self.renderer.vertex_count, 0..100);
+            render_pass.draw_indexed(0..self.renderer.cube_index_count, 0, 0..self.renderer.cube_instances_count);
         }
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
@@ -141,12 +181,17 @@ impl BoxesExample {
         let buffer_layout = 
         [
             VertexBufferLayout{
-                array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                array_stride: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &[VertexAttribute{
                     format: wgpu::VertexFormat::Float32x3,
                     offset: 0,
                     shader_location: 0,
+                },
+                VertexAttribute{
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 1,
                 }],
             },
             VertexBufferLayout{
@@ -155,7 +200,7 @@ impl BoxesExample {
                 attributes: &[VertexAttribute{
                     format: wgpu::VertexFormat::Float32x3,
                     offset: 0,
-                    shader_location: 1,
+                    shader_location: 2,
                 }],
             }
         ];

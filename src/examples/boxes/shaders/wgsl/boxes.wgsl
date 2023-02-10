@@ -6,7 +6,9 @@ var<uniform> camera: CameraUniform;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
-    @location(1) offset: vec3<f32>
+    @location(1) uv: vec2<f32>,
+    
+    @location(2) offset: vec3<f32>
 }
 
 struct VertexOutput {
@@ -17,12 +19,13 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.uv = (in.position.xy + 1.) * .5;
+    out.uv = in.uv;
     out.clip_pos = camera.view_proj * vec4<f32>(in.position + in.offset, 1.0);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4(in.uv, 0., 1.);
+    let mask = smoothstep(0.325, 0.35, distance(in.uv, vec2(0.5, 0.5)));
+    return vec4(mask);
 }
