@@ -29,5 +29,6 @@ var s_voronoi: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(t_voronoi, s_voronoi, in.uv);
+    //return vec4(step(.24, textureSample(t_voronoi, s_voronoi, in.uv).x));
+    return vec4(textureSample(t_voronoi, s_voronoi, in.uv).x);
 }
