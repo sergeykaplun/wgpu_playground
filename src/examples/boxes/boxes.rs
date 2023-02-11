@@ -1,9 +1,11 @@
-use std::iter;
+use std::{iter, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
 
-use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup};
+use glm::{floor, fract};
+use rand::{random, rngs::StdRng, SeedableRng};
+use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup, ComputePipelineDescriptor, PipelineLayout, PipelineLayoutDescriptor, ComputePipeline, Features, BufferDescriptor};
 use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
+use crate::{app::{App, ShaderType, AppVariant}, camera::{ArcballCamera, Camera}};
 
 static CUBE_DATA: &'static [f32] = &[
     -1.0, -1.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0,
@@ -50,6 +52,11 @@ struct Renderer {
     floor_vertex_buffer: Buffer,
     floor_index_buffer: Buffer,
     floor_index_count: u32,
+
+    shadow_compute_pipeline: ComputePipeline,
+    shadow_bind_group: BindGroup,
+    shadow_uniform_buf: Buffer,
+    work_group_count: u32,
 }
 
 pub struct BoxesExample {
@@ -59,6 +66,15 @@ pub struct BoxesExample {
 }
 
 impl App for BoxesExample {
+    fn get_extra_device_features(app_variant: AppVariant) -> Features {
+        let mut features = match app_variant.shader_type {
+            ShaderType::WGSL => Features::empty(),
+            ShaderType::SPIRV => Features::SPIRV_SHADER_PASSTHROUGH,
+        };
+        features |= Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+        features
+    }
+
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
@@ -103,8 +119,11 @@ impl App for BoxesExample {
             label: Some("camera_bind_group_layout"),
         });
 
+        let (tex_view, tex_sampler) = Self::create_shadow_texture(device);
+
         let cube_render_pipeline = BoxesExample::create_cube_rp(device, sc.format, &camera_bind_group_layout, shader_type);
         let floor_render_pipeline = BoxesExample::create_floor_rp(device, sc.format, &camera_bind_group_layout, &floor_tex_bind_group_layout, shader_type);
+        let (shadow_compute_pipeline, shadow_bind_group, shadow_uniform_buf) = BoxesExample::create_shadow_cp(device, &tex_view, shader_type);
 
         let cube_vertex_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("cube verices"),
@@ -117,9 +136,9 @@ impl App for BoxesExample {
             usage: BufferUsages::INDEX,
         });
         let instances: Vec<f32> = (0..100).flat_map(|id|{
-            let x = (id/10 - 5) as f32;
-            let z = (id%10 - 5) as f32;
-            vec![x * 3., 0.0, z * 3., 0.0]
+            let x = (id/10 * 4) as f32;
+            let z = (id%10 * 4) as f32;
+            vec![x - 18., 0.0, z - 18., 0.0]
         }).collect();
 
         let cube_instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
@@ -138,7 +157,6 @@ impl App for BoxesExample {
             contents: bytemuck::cast_slice(FLOOR_INDICES),
             usage: BufferUsages::INDEX,
         });
-        let (tex_view, tex_sampler) = Self::create_voronoi_texture(device, &queue);
         let floor_tex_bind_group = device.create_bind_group(&BindGroupDescriptor{
             label: Some("floor_tex_bindgroup"),
             layout: &floor_tex_bind_group_layout,
@@ -153,7 +171,6 @@ impl App for BoxesExample {
                 }
             ],
         });
-
 
         let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
         let depth_tex_view = Self::create_depth_texture(sc, device);
@@ -174,6 +191,11 @@ impl App for BoxesExample {
                 floor_vertex_buffer,
                 floor_index_buffer,
                 floor_index_count: FLOOR_INDICES.len() as u32,
+
+                shadow_compute_pipeline,
+                shadow_bind_group,
+                shadow_uniform_buf,
+                work_group_count: ((256 as f32) / (256 as f32)).ceil() as u32,
             },
             camera,
             time_in_flight: 0.0,
@@ -190,7 +212,22 @@ impl App for BoxesExample {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+        
+        encoder.push_debug_group("shadow pass");
+        {
+            //let buf = [self.camera.width, self.camera.height, self.time_in_flight, 0.0];
+            let buf = [800., 600., self.time_in_flight, 0.0];
+            self.renderer.queue.write_buffer(&self.renderer.shadow_uniform_buf, 0, bytemuck::cast_slice(&[buf]));
 
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("Shadow") });
+            cpass.set_pipeline(&self.renderer.shadow_compute_pipeline);
+            cpass.set_bind_group(0, &self.renderer.shadow_bind_group, &[]);
+            //cpass.dispatch_workgroups(self.renderer.work_group_count, self.renderer.work_group_count, 1);
+            cpass.dispatch_workgroups(16, 16, 1);
+        }
+        encoder.pop_debug_group();
+
+        encoder.push_debug_group("geometry render pass");
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -231,10 +268,10 @@ impl App for BoxesExample {
             render_pass.set_index_buffer(self.renderer.floor_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.renderer.floor_index_count, 0, 0..1);
         }
+        encoder.pop_debug_group();
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
         output.present();
-
         Ok(())
     }
 
@@ -456,7 +493,71 @@ impl BoxesExample {
             fragment: Some(fragment_state),
             multiview: None,
         })
-        
+    }
+
+    fn create_shadow_cp(device: &wgpu::Device, tex_view: &TextureView, shader_type: ShaderType) -> (wgpu::ComputePipeline, BindGroup, Buffer) {
+        let shadow_bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::StorageTexture {
+                            access: wgpu::StorageTextureAccess::WriteOnly,
+                            format: TextureFormat::R32Float,
+                            view_dimension: wgpu::TextureViewDimension::D2
+                        },
+                        count: None,
+                    }
+                ],
+            label: Some("camera_bind_group_layout"),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor{
+            label: Some("Shadow pipeline descriptor"),
+            bind_group_layouts: &[&shadow_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let shader_module = device.create_shader_module(ShaderModuleDescriptor{
+            label: Some("WGSL shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/shadow.wgsl").into()),
+        });
+        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor{
+            label: Some("Shadow pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader_module,
+            entry_point: "main",
+        });
+        let buf = device.create_buffer(&BufferDescriptor {
+            label: Some("Shadow pass uniform"),
+            size: 16,
+            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+            mapped_at_creation: false }
+        );
+        let bind_group = device.create_bind_group(&BindGroupDescriptor{
+            label: Some("Shadow pass bindgroup"),
+            layout: &shadow_bind_group_layout,
+            entries: &[
+                BindGroupEntry{
+                    binding: 0,
+                    resource: buf.as_entire_binding(),
+                },
+                BindGroupEntry{
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(tex_view),
+                }
+            ],
+        });
+        (pipeline, bind_group, buf)
     }
 }
 
@@ -484,12 +585,51 @@ impl BoxesExample {
 
         depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
+    /*
+    fn hash3(p: glm::Vec2) -> glm::Vec3 {
+        let q = glm::Vec3::new(
+            p.dot(&glm::Vec2::new(127.1,311.7)),
+            p.dot(&glm::Vec2::new(269.5,183.3)),
+            p.dot(&glm::Vec2::new(419.2,371.9)));
+        fract(&(glm::sin(&q) * 43758.5453))
+    }
+
+    fn hash( p: glm::Vec2 ) -> glm::Vec2 {
+        let res = glm::Vec2::new( p.dot(&glm::Vec2::new(127.1,311.7)),p.dot(&glm::Vec2::new(269.5,183.3)) );
+        fract(&(glm::sin(&res) * 43758.5453123)) * 2.0 - glm::Vec2::new(1.0, 1.0)
+    }
+
+    fn voronoi(uv: glm::Vec2) -> glm::Vec3{
+        let n = floor(&uv);
+        let f = glm::fract(&uv);
+
+        let mut mg = glm::Vec2::zeros();
+        let mut mr = glm::Vec2::zeros();
+
+        let mut md = 8.0f32;
+        (-1..1).for_each(|j|{
+            (-1..1).for_each(|i|{
+                let neighbour = n + glm::Vec2::new(i as f32,j as f32);
+                let neighbour_center = neighbour + glm::Vec2::new(0.5, 0.5);
+                let d = neighbour_center.metric_distance(&(n + f));
+
+                if d < md {
+                    md = d;
+                    //mr = r;
+                    //mg = g;
+                }
+            });
+        });
+        //return glm::Vec3::new( md, mr.x, mr.y );
+        return glm::Vec3::new(md, md, md);
+    }
 
     fn create_voronoi_texture(device: &wgpu::Device, queue: &Queue) -> (TextureView, Sampler) {
         let size = 256u32;
         let texels: Vec<f32> = (0..size * size).flat_map(|id| {
-            let uv = glm::Vec2::new((id/256) as f32, (id%256) as f32) / 256.0;
-            [uv.x, uv.y, 0., 1.]
+            let uv = glm::Vec2::new((id/256) as f32, (id%256) as f32) / 256.0 * 10.;
+            let v = Self::voronoi(uv);
+            [v.x, v.y, v.z, 1.]
         }).collect();
         let texture_extent = wgpu::Extent3d {
             width: size,
@@ -518,6 +658,37 @@ impl BoxesExample {
             texture_extent,
         );
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        (texture_view, sampler)
+    }
+     */
+    fn create_shadow_texture(device: &wgpu::Device) -> (TextureView, Sampler) {
+        let size = 256u32;
+        let texture_extent = wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: texture_extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            view_formats: &[],
+        });
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,

@@ -7,8 +7,8 @@ pub trait Camera {
 }
 
 pub struct ArcballCamera {
-    width: f32,
-    height: f32,
+    pub width: f32,
+    pub height: f32,
     fov: f32,
     znear: f32,
     zfar: f32,
