@@ -215,13 +215,15 @@ impl App for BoxesExample {
         
         encoder.push_debug_group("shadow pass");
         {
-            let buf = [self.camera.width, self.camera.height, self.time_in_flight, 0.0];
+            //let buf = [self.camera.width, self.camera.height, self.time_in_flight, 0.0];
+            let buf = [800., 600., self.time_in_flight, 0.0];
             self.renderer.queue.write_buffer(&self.renderer.shadow_uniform_buf, 0, bytemuck::cast_slice(&[buf]));
 
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("Shadow") });
             cpass.set_pipeline(&self.renderer.shadow_compute_pipeline);
             cpass.set_bind_group(0, &self.renderer.shadow_bind_group, &[]);
-            cpass.dispatch_workgroups(self.renderer.work_group_count, self.renderer.work_group_count, 1);
+            //cpass.dispatch_workgroups(self.renderer.work_group_count, self.renderer.work_group_count, 1);
+            cpass.dispatch_workgroups(16, 16, 1);
         }
         encoder.pop_debug_group();
 
@@ -270,7 +272,6 @@ impl App for BoxesExample {
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
         output.present();
-
         Ok(())
     }
 
