@@ -1,8 +1,6 @@
-use std::{iter, collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
+use std::iter;
 
-use glm::{floor, fract};
-use rand::{random, rngs::StdRng, SeedableRng};
-use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup, ComputePipelineDescriptor, PipelineLayout, PipelineLayoutDescriptor, ComputePipeline, Features, BufferDescriptor};
+use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup, ComputePipelineDescriptor, PipelineLayoutDescriptor, ComputePipeline, Features, BufferDescriptor};
 use winit::event::WindowEvent;
 
 use crate::{app::{App, ShaderType, AppVariant}, camera::{ArcballCamera, Camera}};
@@ -35,6 +33,9 @@ static FLOOR_DATA: &'static [f32] = &[
 static FLOOR_INDICES: &[u16] = &[
     0, 1, 2, 2, 3, 0,
 ];
+
+const SHADOW_TEX_SIZE: u32 = 512u32;
+const SHADOW_WORKGROUP_SIZE: u32 = 16u32;
 
 struct Renderer {
     queue: Queue,
@@ -103,16 +104,16 @@ impl App for BoxesExample {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
                             view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false 
+                            multisampled: false     //TODO enable
                         },
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     }
                 ],
@@ -195,7 +196,7 @@ impl App for BoxesExample {
                 shadow_compute_pipeline,
                 shadow_bind_group,
                 shadow_uniform_buf,
-                work_group_count: ((256 as f32) / (256 as f32)).ceil() as u32,
+                work_group_count: SHADOW_TEX_SIZE/SHADOW_WORKGROUP_SIZE + 1, // div_ceil
             },
             camera,
             time_in_flight: 0.0,
@@ -215,15 +216,13 @@ impl App for BoxesExample {
         
         encoder.push_debug_group("shadow pass");
         {
-            //let buf = [self.camera.width, self.camera.height, self.time_in_flight, 0.0];
-            let buf = [800., 600., self.time_in_flight, 0.0];
+            let buf = [SHADOW_TEX_SIZE as f32, SHADOW_TEX_SIZE as f32, self.time_in_flight, 0.0];
             self.renderer.queue.write_buffer(&self.renderer.shadow_uniform_buf, 0, bytemuck::cast_slice(&[buf]));
 
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("Shadow") });
             cpass.set_pipeline(&self.renderer.shadow_compute_pipeline);
             cpass.set_bind_group(0, &self.renderer.shadow_bind_group, &[]);
-            //cpass.dispatch_workgroups(self.renderer.work_group_count, self.renderer.work_group_count, 1);
-            cpass.dispatch_workgroups(16, 16, 1);
+            cpass.dispatch_workgroups(self.renderer.work_group_count, self.renderer.work_group_count, 1);
         }
         encoder.pop_debug_group();
 
@@ -363,13 +362,13 @@ impl BoxesExample {
         
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
-                label: Some("Full-screen triangle pipeline layout"),
+                label: Some("Boxes pipeline layout"),
                 bind_group_layouts: &[cam_bgl],
                 push_constant_ranges: &[],
             }
         );
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("SimpleTriApp pipeline"),
+            label: Some("Boxes pipeline"),
             layout: Some(&pipeline_layout),
             vertex: vertex_state,
             primitive: PrimitiveState {
@@ -539,7 +538,7 @@ impl BoxesExample {
         });
         let buf = device.create_buffer(&BufferDescriptor {
             label: Some("Shadow pass uniform"),
-            size: 16,
+            size: std::mem::size_of::<[f32; 4]>() as u64,
             usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
             mapped_at_creation: false }
         );
@@ -670,9 +669,9 @@ impl BoxesExample {
 
         (texture_view, sampler)
     }
-     */
+    */
     fn create_shadow_texture(device: &wgpu::Device) -> (TextureView, Sampler) {
-        let size = 256u32;
+        let size = SHADOW_TEX_SIZE;
         let texture_extent = wgpu::Extent3d {
             width: size,
             height: size,
@@ -693,9 +692,9 @@ impl BoxesExample {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 
