@@ -252,13 +252,6 @@ impl App for BoxesExample {
                     stencil_ops: None,
                 })
             });
-        
-            render_pass.set_pipeline(&self.renderer.cube_render_pipeline);
-            render_pass.set_vertex_buffer(0, self.renderer.cube_vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.renderer.cube_instance_buffer.slice(..));
-            render_pass.set_index_buffer(self.renderer.cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
-            render_pass.draw_indexed(0..self.renderer.cube_index_count, 0, 0..self.renderer.cube_instances_count);
 
             render_pass.set_pipeline(&self.renderer.floor_render_pipeline);
             render_pass.set_vertex_buffer(0, self.renderer.floor_vertex_buffer.slice(..));
@@ -266,6 +259,13 @@ impl App for BoxesExample {
             render_pass.set_bind_group(1, &self.renderer.floor_tex_bind_group, &[]);
             render_pass.set_index_buffer(self.renderer.floor_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.renderer.floor_index_count, 0, 0..1);
+
+            // render_pass.set_pipeline(&self.renderer.cube_render_pipeline);
+            // render_pass.set_vertex_buffer(0, self.renderer.cube_vertex_buffer.slice(..));
+            // render_pass.set_vertex_buffer(1, self.renderer.cube_instance_buffer.slice(..));
+            // render_pass.set_index_buffer(self.renderer.cube_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            // render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
+            // render_pass.draw_indexed(0..self.renderer.cube_index_count, 0, 0..self.renderer.cube_instances_count);
         }
         encoder.pop_debug_group();
         
