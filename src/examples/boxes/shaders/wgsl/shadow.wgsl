@@ -1,15 +1,21 @@
-const CELLS_CNT = 2u;
+//const CELLS_CNT = 10u;
+//const CELLS_CNT_F = 10.0;
 
-struct Constants
+struct GlobalConstants
 {
-    resolution: vec2<f32>,
-    time:       f32,
-    unused:     f32
+    shadow_res:         vec2<f32>,
+    light_position:     vec2<f32>,
+    light_color:        vec3<f32>,
+    time:               f32,
+    cells_cnt:          vec2<f32>,
+    unused:             vec2<f32>
 };
- 
-@group(0) @binding(0) var<uniform> constants: Constants;
-@group(0) @binding(1) var t_output: texture_storage_2d<r32float, write>;
 
+@group(0) @binding(0) var<uniform> constants: GlobalConstants;
+@group(1) @binding(0) var t_output: texture_storage_2d<r32float, write>;
+@group(1) @binding(1) var<storage, read> cells_centers : array<vec4<f32>>;
+
+/*
 fn voxel_clr(uv: vec2<f32>, pos: vec2<i32>) -> f32 {
 	let pix = vec2<i32>(floor(uv * f32(CELLS_CNT)));
     return f32(all(pix == pos));
@@ -38,88 +44,143 @@ fn traverse_along(uv: vec2<f32>, start: vec2<i32>, dir: vec2<i32>) -> f32 {
 	return res;
 }
 
-//by iq
+struct Ray {
+    origin: vec2<f32>,
+    dir: vec2<f32>
+};
+*/
 
-fn hash(uv_in: vec2<f32>) -> vec2<f32>{
-    let k = vec2(0.3183099, 0.3678794);
-    let x = uv_in * k + k.yx;
-    return -1.0 + 2.0 * fract(16.0 * k * fract(x.x * x.y * (x.x + x.y)));
+// source: https://gamedev.stackexchange.com/questions/18436/most-efficient-aabb-vs-ray-collision-algorithms
+fn box_hit(raypos: vec2<f32>, raydir: vec2<f32>, boxmin: vec2<f32>, boxmax: vec2<f32>) -> bool {
+    let t1 = (boxmin.x - raypos.x) / raydir.x;
+    let t2 = (boxmax.x - raypos.x) / raydir.x;
+    let t3 = (boxmin.y - raypos.y) / raydir.y;
+    let t4 = (boxmax.y - raypos.y) / raydir.y;
+    
+    let tmin = max(min(t1, t2), min(t3, t4));
+    let tmax = min(max(t1, t2), max(t3, t4));
+
+    if (tmin < 0.0 || tmax < 0.0 || tmin > tmax) {
+    //if (tmax < 0.0 || tmin > tmax) {
+        return false;
+    }
+    return true;
 }
 
-fn voronoi(uv: vec2<f32>) -> vec3<f32>{
-    let n = floor(uv);
-    let f = fract(uv);
+/*
+fn calculate_shadows2(uv: vec2<f32>) -> f32 {
+    let start_pos = vec2(0.0);
+    let end_pos = vec2(1.0);
+    //let direction = end_pos - start_pos;
+    let direction = vec2(350.0, 350.0);
 
-    var mg: vec2<f32>;
-    var mr: vec2<f32>;
-    var md = 10.;
+    //let mod_uv = floor(uv * constants.cells_cnt);
+    //let LIGHT_POS = constants.light_position * constants.cells_cnt;
+    //let direction = normalize(constants.light_position - uv);
 
-    for(var j=-1; j<=1; j++) {
-        for(var i=-1; i<=1; i++) {
-            let g = vec2(f32(i), f32(j));
-            let o = hash(n + g);
+    let pixelSize = vec2(1.0) / 500.;
+    var rayPosition = start_pos;
+    let rayStep = sign(direction) * pixelSize / abs(direction);
+    var pixelCount = 0;
+    var res = 0.0;
+    
+    // if true {
+    //     if (all(floor(uv * constants.cells_cnt) == vec2(0.))){
+    //         return 1.0;
+    //     }
+    // }
 
-            let r = g + o - f;
-            let d = dot(r, r);
+    //while (pixelCount < 10) {
+    for (var i=0; i<10; i++) {
+        // let left_up = rayPosition + 0.5 - .125;// + pos_offset;
+        // let right_bottom = rayPosition + 0.5 + .125;// + pos_offset;
+        // if (box_hit(uv, normalize(LIGHT_POS - uv), left_up, right_bottom)) {
+        //     return 0.1;
+        // }
+        if (all(floor(uv * 500.) == floor(rayPosition))){
+            res += 0.2;
+        }
+        
+        rayPosition += rayStep;
+        //if (rayPosition.x < 0.0 || rayPosition.y < 0.0 || rayPosition.x > 1.0 || rayPosition.y > 1.0) {
+        //    break;
+        //}
+        pixelCount++;
+    }
+    return res;
+}
+*/
+fn calculate_shadows(uv: vec2<f32>) -> f32{
+    let light_pos = constants.light_position;
+    
+    { // traverse along light direction
+        let LIGHT_CELL = vec2<i32>(floor(light_pos * constants.cells_cnt));
+        var TO_LIGHT_SECTORS = LIGHT_CELL - vec2<i32>(floor(uv * constants.cells_cnt));
+            
+        let GENERAL_DIR = sign(vec2<f32>(TO_LIGHT_SECTORS));
+        var STEPS_CNT = abs(TO_LIGHT_SECTORS);
+        let MAX_ITERATIONS = STEPS_CNT.x + STEPS_CNT.y;
 
-            if(d < md){
-                md = d;
-                mr = r;
-                mg = g;
+        let b = STEPS_CNT * 2;
+        var e   = STEPS_CNT.y - STEPS_CNT.x;
+        var pos = floor(uv * constants.cells_cnt);
+        
+        for (var i = 0; i < MAX_ITERATIONS; i++) {
+            {
+                let LIGHT_POS = light_pos * constants.cells_cnt;
+                let BIG_UV = uv * constants.cells_cnt;
+                let circle = vec3(pos + 0.5, .1);
+                
+                let index = u32(pos.x * constants.cells_cnt.x + pos.y);
+                let pos_offset = cells_centers[index].zw * .25;
+                let left_up = pos + 0.5 - .125 + pos_offset;
+                let right_bottom = pos + 0.5 + .125 + pos_offset;
+
+                if (box_hit(BIG_UV, normalize(LIGHT_POS - BIG_UV), left_up, right_bottom)) {
+                   return 0.5;
+                }
             }
-            /*
-            let neighbour = n + vec2(f32(i), f32(j));
-            let neighbour_center = neighbour + hash(neighbour);
-            //let to_neighbour_center = neighbour + neighbour_center - f;
-            //let distance_to_neightbour = dot(to_neighbour_center, to_neighbour_center);
-            let distance_to_neightbour = distance(uv, neighbour_center);
-
-            if(distance_to_neightbour < md) {
-                md = distance_to_neightbour;
-                //mr = to_neighbour_center;
-                mg = neighbour_center;
+            
+            if (e < 0){
+                pos.x += GENERAL_DIR.x;
+                e += b.y;
+            } else {
+                pos.y += GENERAL_DIR.y;  
+                e -= b.x;
             }
-            */
         }
     }
-    return vec3(md, mg.x, mg.y);
 
-    /*
-    md = 8.0;
-    for( int j=-2; j<=2; j++ )
-    for( int i=-2; i<=2; i++ )
-    {
-        vec2 g = mg + vec2(float(i),float(j));
-		vec2 o = hash( n + g );
-		#ifdef ANIMATE
-        o = 0.5 + 0.5*sin( iTime + 6.2831*o );
-        #endif	
-        vec2 r = g + o - f;
-
-        if( dot(mr-r,mr-r)>0.00001 )
-        md = min( md, dot( 0.5*(mr+r), normalize(r-mr) ) );
-    }
-
-    return vec3( md, mr );
-    */
+    return 1.0;
 }
 
+//const SS = 4;
 @compute @workgroup_size(16, 16, 1)
 fn main(@builtin(local_invocation_id) localInvocationID: vec3<u32>, @builtin(workgroup_id) workgroupID: vec3<u32>,
         @builtin(local_invocation_index) localInvocationIndex: u32, @builtin(global_invocation_id) globalInvocationID: vec3<u32>) {
-    let tex_coord = workgroupID.xy * vec2(16u) + localInvocationID.xy;
-    let uv = vec2<f32>(f32(tex_coord.x), f32(tex_coord.y)) / constants.resolution;
-    let aspect = constants.resolution.xy / constants.resolution.yy;
+    let tex_coord: vec2<i32> = vec2<i32>(workgroupID.xy) * vec2(16) + vec2<i32>(localInvocationID.xy);
+    let aspect = constants.shadow_res.xy / constants.shadow_res.yy;
+    
+    //let mod_uv = (vec2<f32>(tex_coord.xy) * aspect) % vec2<f32>(vec2<u32>(constants.resolution.xy)/CELLS_CNT);
+    //let bg = step(mod_uv, vec2(1.));
+    
+    // var clr = 0.;
+    // for (var y = -SS/2; y < SS/2; y++) {
+    //     for (var x = -SS/2; x < SS/2; x++) {
+    //         //let offset = vec2<f32>(x, y)
+    //         let uv = vec2<f32>(tex_coord + vec2(x, y)) / constants.resolution;
+    //         //clr += clamp(color(fragCoord + vec2(x, y) / float(SS)), 0., 1.);
+    //         clr += calculate_shadows(uv);
+    //     }
+    // }
+    // clr /= f32(SS * SS);
 
-    let mod_uv = (vec2<f32>(tex_coord.xy) * aspect) % vec2<f32>(vec2<u32>(constants.resolution.xy)/CELLS_CNT);
-    let bg = .25 + .25 * step(vec2(1.), mod_uv);
-    
-    //let beg = vec2<i32>(5);
-    //let angle = constants.time;
-    //let dxy = vec2<i32>(i32(cos(angle) * 5.0), i32(sin(angle) * 5.0));
-    //let col = traverse_along(uv, beg, dxy);
-    
-    let vor = voronoi(uv * f32(CELLS_CNT));
-    textureStore(t_output, tex_coord, vec4<f32>(min(bg.x, bg.y) + smoothstep(.16, .15, vor.x)));
-    //textureStore(t_output, tex_coord, vec4<f32>(min(bg.x, bg.y) + vor.x));
+    let uv = vec2<f32>(tex_coord.xy) / constants.shadow_res * aspect;
+    var clr = calculate_shadows(uv);
+
+    //let iiii = vec2(6, 4);
+    //let llll = vec2<i32>(floor(constants.light_position * CELLS_CNT_F));
+    //clr += traverse_along(uv, llll, iiii - llll) * 0.75;
+
+    textureStore(t_output, tex_coord, vec4<f32>(clr));
 }

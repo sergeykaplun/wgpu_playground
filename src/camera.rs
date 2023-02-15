@@ -77,7 +77,7 @@ impl ArcballCamera {
             mouse_last_coord: PhysicalPosition { x: 0., y: 0. },
             mouse_pressed: false,
 
-            dist: 30.,
+            dist: 35.,
             azimuth: 0.,
             polar: 0.,
         }
