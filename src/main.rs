@@ -1,4 +1,5 @@
 use app::AppVariant;
+use flipboard::FlipboardExample;
 use boxes::BoxesExample;
 use structopt::StructOpt;
 use fullscreen_triangle::FullscreenTriangleExample;
@@ -14,9 +15,12 @@ extern crate nalgebra_glm as glm;
 mod fullscreen_triangle;
 #[path = "./examples/boxes/boxes.rs"]
 mod boxes;
+#[path = "./examples/flipboard/flipboard.rs"]
+mod flipboard;
 
 fn main() {
     let app_variant = AppVariant::from_args();
     //pollster::block_on(run::<FullscreenTriangleExample>("FullscreenTriangleExample", app_variant)).expect("FullscreenTriangleExample exited unexpectedly");
-    pollster::block_on(run::<BoxesExample>("BoxesExample", app_variant)).expect("BoxesExample exited unexpectedly");
+    //pollster::block_on(run::<BoxesExample>("BoxesExample", app_variant)).expect("BoxesExample exited unexpectedly");
+    pollster::block_on(run::<FlipboardExample>("FlipboardExample", app_variant)).expect("FlipboardExample exited unexpectedly");
 }
