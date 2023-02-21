@@ -4,22 +4,27 @@ use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceErr
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
 
 use crate::app::{App, AppVariant};
+use renderdoc::*;
 
 pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Result<(), CreateSurfaceError>{
     env_logger::init();
     
     let event_loop = EventLoop::new();
-    let icon = image::open(Path::new("./assets/logo.png"))
-        .expect("Failed to open icon path")
-        .to_rgba8();
-    let (icon_width, icon_height) = icon.dimensions();
-    let window = winit::window::WindowBuilder::new()
-        .with_window_icon(Some(
-            Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap(),
-        ))
-        .with_title(title).build(&event_loop).unwrap();
+    let icon = match image::open(Path::new("./assets/logo.png")) {
+        Ok(file) => {
+            Some(file.to_rgba8())
+        },
+        Err(error) => {
+            println!("Failed to open icon asset - {}", error);
+            None
+        },
+    };
+    let window = winit::window::WindowBuilder::new().with_title(title).build(&event_loop).unwrap();
+    if let Some(icon) = icon {
+        let (icon_width, icon_height) = icon.dimensions();
+        window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))
+    }
     let size = window.inner_size();
-
     let instance = wgpu::Instance::new(InstanceDescriptor{
         backends: Backends::all(),
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
@@ -105,7 +110,23 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                         }
                         WindowEvent::ScaleFactorChanged { .. } => {
                             app_instance.resize(&surface_config, &device);
-                        }
+                        },
+                        WindowEvent::KeyboardInput {
+                            input,
+                            ..
+                        } => {
+                            match input.virtual_keycode.unwrap() {
+                                VirtualKeyCode::Q => match RenderDoc::<V110>::new().as_mut() {
+                                    Ok(rd) => {
+                                        rd.trigger_capture();
+                                    }
+                                    Err(error) => {
+                                        println!("Unable to connect: {}", error)
+                                    },
+                                },
+                                _ => ()
+                            };
+                        },
                         _ => {}
                     }
                 }

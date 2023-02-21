@@ -1,11 +1,12 @@
 use std::iter;
 
-use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, Face, MultisampleState};
+use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, Face, MultisampleState, TextureView, TextureViewDescriptor};
 
 use crate::app::{App, ShaderType};
 
 struct Renderer {
     pipeline: wgpu::RenderPipeline,
+    intermediate_texture_view: TextureView,
     queue: Queue,
 }
 
@@ -20,10 +21,10 @@ impl App for FlipboardExample {
         queue: wgpu::Queue,
         shader_type: crate::app::ShaderType
     ) -> Self {
-        let pipeline = Self::create_render_pipeline(device, sc.format, shader_type);
         let renderer = Renderer {
-            pipeline,
+            pipeline: Self::create_render_pipeline(device, sc.format, shader_type),
             queue,
+            intermediate_texture_view: Self::create_texture(device, sc.format)
         };
         Self { renderer }
     }
@@ -38,22 +39,37 @@ impl App for FlipboardExample {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+        let ops = wgpu::Operations {
+            load: wgpu::LoadOp::Clear(wgpu::Color {
+                r: 0.9,
+                g: 0.2,
+                b: 0.3,
+                a: 1.0,
+            }),
+            store: true,
+        };
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &&self.renderer.intermediate_texture_view,
+                    resolve_target: None,
+                    ops: ops,
+                })],
+                depth_stencil_attachment: None
+            });
         
+            render_pass.set_pipeline(&self.renderer.pipeline);
+            render_pass.draw(0..3, 0..1);
+        }
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.9,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: true,
-                    },
+                    ops: ops,
                 })],
                 depth_stencil_attachment: None
             });
@@ -147,5 +163,31 @@ impl FlipboardExample {
             fragment: Some(fragment_state),
             multiview: None,
         })
+    }
+
+    fn create_texture(device: &Device, tex_format: TextureFormat) -> TextureView {
+        let texture_size = 256u32;
+
+        let texture_desc = wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: texture_size,
+                height: texture_size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: tex_format,
+            usage: wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                ,
+            label: None,
+            view_formats: &[],
+        };
+        let texture = device.create_texture(&texture_desc);
+        //texture.create_view(&Default::default())
+        let mut descriptor = TextureViewDescriptor::default();
+        descriptor.label = Some("Intermediate texture");
+        texture.create_view(&descriptor)
     }
 }
