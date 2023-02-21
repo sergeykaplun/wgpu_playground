@@ -1,5 +1,6 @@
 use std::iter;
 
+use rand::{distributions::Uniform, prelude::Distribution};
 use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup, ComputePipelineDescriptor, PipelineLayoutDescriptor, ComputePipeline, Features, BufferDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages};
 use winit::event::{WindowEvent, ElementState, VirtualKeyCode};
 
@@ -58,7 +59,7 @@ static FLOOR_INDICES: &[u16] = &[
     0, 1, 2, 2, 3, 0,
 ];
 
-const SHADOW_TEX_SIZE: u32 = 512u32;
+const SHADOW_TEX_SIZE: u32 = 1024u32;
 const SHADOW_WORKGROUP_SIZE: u32 = 16u32;
 const CELLS_CNT: u32 = 10u32;
 
@@ -191,13 +192,13 @@ impl App for BoxesExample {
             let z = (id%CELLS_CNT * 4) as f32;
             vec![x - 18., z - 18., 0.0, 0.0]
         }).collect();
-        // let mut rng = rand::thread_rng();
-        // let unif = Uniform::new_inclusive(-1.0, 1.0);
-        // for cells_center in instances.chunks_mut(4) {
-        //     cells_center[2] += unif.sample(&mut rng) * 1.5;
-        //     cells_center[3] += unif.sample(&mut rng) * 1.5;
+        let mut rng = rand::thread_rng();
+        let unif = Uniform::new_inclusive(-1.0, 1.0);
+        for cells_center in instances.chunks_mut(4) {
+            cells_center[2] += unif.sample(&mut rng) * 1.5;
+            cells_center[3] += unif.sample(&mut rng) * 1.5;
             
-        // };
+        };
 
         let cube_instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("vube instances"),
@@ -305,9 +306,6 @@ impl App for BoxesExample {
         
         encoder.push_debug_group("shadow pass");
         {
-            //let buf = [SHADOW_TEX_SIZE as f32, SHADOW_TEX_SIZE as f32, self.light_controller.light_position[0], self.light_controller.light_position[1], self.time_in_flight];
-            //self.renderer.queue.write_buffer(&self.renderer.shadow_uniform_buf, 0, bytemuck::cast_slice(&[buf]));
-
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("Shadow") });
             cpass.set_pipeline(&self.renderer.shadow_compute_pipeline);
             cpass.set_bind_group(0, &self.renderer.global_constants_bind_group, &[]);
@@ -318,10 +316,6 @@ impl App for BoxesExample {
 
         encoder.push_debug_group("geometry render pass");
         {
-            //let light_data = [self.light_controller.light_position[0] * 40. - 20., self.light_controller.light_position[1] * 40. - 20., 0.0, 0.0, 0.5, 0.25, 0.75, 1.0];
-            //self.renderer.queue.write_buffer(&self.renderer.light_data_buffer, 0, bytemuck::cast_slice(&light_data));
-            //self.renderer.queue.write_buffer(&self.renderer.global_constants_buffer, 0, bytemuck::cast_slice(self.constants));
-
             let globals = [self.constants.shadow_res[0], self.constants.shadow_res[1], 
                                       self.constants.light_position[0], self.constants.light_position[1],
                                       self.constants.light_color[0], self.constants.light_color[1], self.constants.light_color[2],
@@ -360,9 +354,6 @@ impl App for BoxesExample {
             render_pass.set_bind_group(0, &self.renderer.global_constants_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera.camera_bind_group, &[]);
             render_pass.set_bind_group(2, &self.renderer.shadow_tex_bind_group, &[]);
-            // render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
-            // render_pass.set_bind_group(1, &self.renderer.floor_tex_bind_group, &[]);
-            // render_pass.set_bind_group(2, &self.renderer.light_data_bind_group, &[]);
             render_pass.set_index_buffer(self.renderer.floor_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.renderer.floor_index_count, 0, 0..1);
 
@@ -543,7 +534,7 @@ impl BoxesExample {
             ShaderType::WGSL => {
                 spirv_modules.push(device.create_shader_module(ShaderModuleDescriptor{
                     label: Some("WGSL shader"),
-                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/floor.wgsl").into()),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/ground.wgsl").into()),
                 }));
                 vertex_state = wgpu::VertexState {
                     module: &spirv_modules[0],
@@ -557,10 +548,9 @@ impl BoxesExample {
                 }
             },
             ShaderType::SPIRV => {
-                //TODO error here
                 unsafe {
-                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/boxes.vs.spv")));
-                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/boxes.fs.spv")));
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/ground.vs.spv")));
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/ground.fs.spv")));
                 };
                 vertex_state = wgpu::VertexState {
                     module: &spirv_modules[0],
@@ -608,7 +598,7 @@ impl BoxesExample {
         })
     }
 
-    fn create_shadow_cp(device: &wgpu::Device, tex_view: &TextureView, instance_buffer: &Buffer, shadow_bgl: &BindGroupLayout, _shader_type: ShaderType) -> (wgpu::ComputePipeline, BindGroup) {
+    fn create_shadow_cp(device: &wgpu::Device, tex_view: &TextureView, instance_buffer: &Buffer, shadow_bgl: &BindGroupLayout, shader_type: ShaderType) -> (wgpu::ComputePipeline, BindGroup) {
         let shadow_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -640,10 +630,17 @@ impl BoxesExample {
             bind_group_layouts: &[shadow_bgl, &shadow_bind_group_layout],
             push_constant_ranges: &[],
         });
-        let shader_module = device.create_shader_module(ShaderModuleDescriptor{
-            label: Some("WGSL shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/shadow.wgsl").into()),
-        });
+        
+        let shader_module = match shader_type {
+            ShaderType::WGSL => device.create_shader_module(ShaderModuleDescriptor{
+                                    label: Some("WGSL shader"),
+                                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/shadow.wgsl").into()),
+                                }),
+            ShaderType::SPIRV => unsafe {
+                                    device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/shadow.cs.spv"))
+                                },
+        };
+        
         let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor{
             label: Some("Shadow pipeline"),
             layout: Some(&pipeline_layout),

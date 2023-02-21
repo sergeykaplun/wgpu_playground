@@ -39,16 +39,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let world_pos = in.uv * 40. - 20.;
     let lighted = pow(1.0 - distance(light_xz, world_pos) / 40., 1.5);
     
-    //var res = vec4(constants.light_color, 1.0) * lighted * shadow;
-    var res = vec4(shadow);
+    var res = vec4(constants.light_color, 1.0) * lighted * shadow;
 
     let light_pos_mark = smoothstep(.0015, .005, distance(distance(in.uv, light_xz), .01));
     res = mix(vec4(1., 0., 0., 1.), res, light_pos_mark);
 
-    let mod_uv = fract(in.uv * constants.cells_cnt);
-    let grid = smoothstep(vec2(.01), vec2(.03), mod_uv);
-    res = mix(vec4(1.), res, min(grid.x, grid.y));
-
-    
+    // let mod_uv = fract(in.uv * constants.cells_cnt);
+    // let grid = smoothstep(vec2(.01), vec2(.03), mod_uv);
+    // res = mix(vec4(1.), res, min(grid.x, grid.y));
     return res;
 }

@@ -1,0 +1,90 @@
+#version 450
+
+layout(set = 0, binding = 0) uniform Constants {
+    vec2 shadow_res;
+    vec2 light_position;
+    vec3 light_color;
+    float time;
+    vec2 cells_cnt;
+    vec2 unused;
+} constants;
+layout (set = 1, binding = 0, r32f) uniform image2D t_output;
+layout (set = 1, binding = 0, std430) buffer CellsCenters {
+    vec4 data[];
+} cells_centers;
+
+bool rect_hit(vec2 ray_origin, vec2 ray_dir, vec2 bounds_min, vec2 bounds_max) {
+    float t1 = (bounds_min.x - ray_origin.x) / ray_dir.x;
+    float t2 = (bounds_max.x - ray_origin.x) / ray_dir.x;
+    float t3 = (bounds_min.y - ray_origin.y) / ray_dir.y;
+    float t4 = (bounds_max.y - ray_origin.y) / ray_dir.y;
+    
+    float tmin = max(min(t1, t2), min(t3, t4));
+    float tmax = min(max(t1, t2), max(t3, t4));
+
+    return !(tmin < 0.0 || tmax < 0.0 || tmin > tmax);
+}
+
+vec4 get_inner_rect_for_cell(vec2 pos) {
+    uint index = uint(pos.x * constants.cells_cnt.x + pos.y);
+    vec2 pos_offset = cells_centers.data[index].zw * .25;
+    vec2 left_up = pos + 0.5 - .125 + pos_offset ;
+    vec2 right_bottom = pos + 0.5 + .125 + pos_offset;
+
+    return vec4(left_up, right_bottom);
+}
+
+float calculate_shadows(vec2 uv) {
+    vec2 LIGHT_POS = constants.light_position * constants.cells_cnt;
+    vec2 LIGHT_CELL = floor(LIGHT_POS);
+    vec2 TO_LIGHT_SECTORS = LIGHT_CELL - floor(uv * constants.cells_cnt);
+    vec2 GENERAL_DIR = sign(TO_LIGHT_SECTORS);
+    vec2 STEPS_CNT = abs(TO_LIGHT_SECTORS);
+    uint MAX_ITERATIONS = uint(STEPS_CNT.x + STEPS_CNT.y);
+    vec2 DOUBLED_STEPS = STEPS_CNT * 2.;
+    vec2 RAY_START = uv * constants.cells_cnt;
+
+    // I need this hack to mininmaze false empty segments.
+    // Sometimes the traverse algorithm pick wrong direction.
+    for (uint hack_iteration = 0; hack_iteration < 2; hack_iteration++) {
+        float e   = STEPS_CNT.y - STEPS_CNT.x;
+        vec2 pos = floor(uv * constants.cells_cnt);
+        
+        for (uint i = 0; i < MAX_ITERATIONS; i++) {
+            vec4 corners = get_inner_rect_for_cell(pos);
+            if (rect_hit(RAY_START, normalize(LIGHT_POS - RAY_START), corners.xy, corners.zw)) {
+                return 0.5;
+            }
+
+            float compare_with = 1e-5 * float(hack_iteration);
+            if (e < compare_with){
+                pos.x += GENERAL_DIR.x;
+                e += DOUBLED_STEPS.y;
+            } else {
+                pos.y += GENERAL_DIR.y;
+                e -= DOUBLED_STEPS.x;
+            }
+        }
+    }
+
+    return 1.0;
+}
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+void main() {
+    uvec2 tex_coord = gl_GlobalInvocationID.xy;
+    vec2 aspect = constants.shadow_res.xy / constants.shadow_res.yy;
+    
+    // float clr = 0.;
+    // for (uint y = -SS/2; y < SS/2; y++) {
+    //     for (uint x = -SS/2; x < SS/2; x++) {
+    //         vec2 uv = vec2(tex_coord + vec2(x, y)) / constants.resolution;
+    //         clr += calculate_shadows(uv);
+    //     }
+    // }
+    // clr /= float(SS * SS);
+
+    vec2 uv = vec2(tex_coord.xy) / constants.shadow_res * aspect;
+    float clr = calculate_shadows(uv);
+    imageStore(t_output, ivec2(tex_coord), vec4(clr));
+}
