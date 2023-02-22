@@ -1,13 +1,17 @@
 use std::iter;
 
-use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, Face, MultisampleState, TextureView, TextureViewDescriptor};
+use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, Face, MultisampleState, TextureView, TextureViewDescriptor, ComputePipelineDescriptor, BindGroupEntry, BindGroupDescriptor, ComputePipeline, BindGroup};
 
 use crate::app::{App, ShaderType};
 
 struct Renderer {
-    pipeline: wgpu::RenderPipeline,
-    intermediate_texture_view: TextureView,
     queue: Queue,
+
+    pipeline: wgpu::RenderPipeline,
+    
+    game_output_pipeline: wgpu::ComputePipeline,
+    game_output_bind_group: BindGroup,
+    game_output_workgroup_size: u32,
 }
 
 pub(crate) struct FlipboardExample {
@@ -21,10 +25,14 @@ impl App for FlipboardExample {
         queue: wgpu::Queue,
         shader_type: crate::app::ShaderType
     ) -> Self {
+        let (game_output_pipeline, game_output_bind_group) = Self::create_game_pipeline(device, shader_type);
         let renderer = Renderer {
-            pipeline: Self::create_render_pipeline(device, sc.format, shader_type),
             queue,
-            intermediate_texture_view: Self::create_texture(device, sc.format)
+            pipeline: Self::create_render_pipeline(device, sc.format, shader_type),
+            game_output_pipeline,
+            game_output_bind_group,
+            game_output_workgroup_size: 16,
+            //intermediate_texture_view: Self::create_texture(device, sc.format)
         };
         Self { renderer }
     }
@@ -48,21 +56,16 @@ impl App for FlipboardExample {
             }),
             store: true,
         };
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &&self.renderer.intermediate_texture_view,
-                    resolve_target: None,
-                    ops: ops,
-                })],
-                depth_stencil_attachment: None
-            });
-        
-            render_pass.set_pipeline(&self.renderer.pipeline);
-            render_pass.draw(0..3, 0..1);
-        }
 
+        encoder.push_debug_group("game output pass");
+        {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("Game output") });
+            cpass.set_pipeline(&self.renderer.game_output_pipeline);
+            cpass.set_bind_group(0, &self.renderer.game_output_bind_group, &[]);
+            cpass.dispatch_workgroups(self.renderer.game_output_workgroup_size, self.renderer.game_output_workgroup_size, 1);
+        }
+        encoder.pop_debug_group();
+        
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -165,7 +168,61 @@ impl FlipboardExample {
         })
     }
 
-    fn create_texture(device: &Device, tex_format: TextureFormat) -> TextureView {
+    fn create_game_pipeline(device: &Device, shader_type: ShaderType) -> (ComputePipeline, BindGroup) {
+        let shadow_bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::StorageTexture {
+                            access: wgpu::StorageTextureAccess::WriteOnly,
+                            format: TextureFormat::R32Float,
+                            view_dimension: wgpu::TextureViewDimension::D2
+                        },
+                        count: None,
+                    }
+                ],
+            label: Some("game_output_bind_group_layout"),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor{
+            label: Some("Game output pipeline descriptor"),
+            bind_group_layouts: &[&shadow_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        
+        let shader_module = match shader_type {
+            ShaderType::WGSL => device.create_shader_module(ShaderModuleDescriptor{
+                                    label: Some("WGSL shader"),
+                                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/game.wgsl").into()),
+                                }),
+            // ShaderType::SPIRV => unsafe {
+            //                         device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/shadow.cs.spv"))
+            //                     },
+            _ => panic!("PANIC")
+        };
+        
+        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor{
+            label: Some("Game compute pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader_module,
+            entry_point: "main",
+        });
+        let texture_view = Self::create_texture(device);
+        let bind_group = device.create_bind_group(&BindGroupDescriptor{
+            label: Some("Game compute bindgroup"),
+            layout: &shadow_bind_group_layout,
+            entries: &[
+                BindGroupEntry{
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                }
+            ],
+        });
+        (pipeline, bind_group)
+    }
+
+    fn create_texture(device: &Device) -> TextureView {
         let texture_size = 256u32;
 
         let texture_desc = wgpu::TextureDescriptor {
@@ -177,15 +234,12 @@ impl FlipboardExample {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: tex_format,
-            usage: wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::RENDER_ATTACHMENT
-                ,
+            format: TextureFormat::R32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
             label: None,
             view_formats: &[],
         };
         let texture = device.create_texture(&texture_desc);
-        //texture.create_view(&Default::default())
         let mut descriptor = TextureViewDescriptor::default();
         descriptor.label = Some("Intermediate texture");
         texture.create_view(&descriptor)
