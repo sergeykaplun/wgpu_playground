@@ -30,7 +30,7 @@ pub struct ArcballCamera {
 
 impl ArcballCamera {
     pub fn new(device: &Device, width: f32, height: f32,
-                fov: f32, znear: f32, zfar: f32, speed: f32) -> Self {
+                fov: f32, znear: f32, zfar: f32, speed: f32, dist: f32) -> Self {
         let arr: [[f32; 4]; 4] = glm::Mat4::identity().into();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -77,7 +77,7 @@ impl ArcballCamera {
             mouse_last_coord: PhysicalPosition { x: 0., y: 0. },
             mouse_pressed: false,
 
-            dist: 35.,
+            dist,
             azimuth: 0.,
             polar: 0.,
         }
@@ -117,9 +117,12 @@ impl Camera for ArcballCamera {
         eye = glm::rotate_x_vec3(&eye, self.polar);
         eye = glm::rotate_y_vec3(&eye, self.azimuth);
 
-
         let mat = glm::perspective_fov(self.fov, self.width, self.height, self.znear, self.zfar) * 
                                                       glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
+        
+        // let mat = glm::ortho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
+        //                                             * glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
+        
         self.view_proj_mat = mat.into();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.view_proj_mat]));
 

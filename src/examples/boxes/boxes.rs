@@ -252,7 +252,7 @@ impl App for BoxesExample {
             ],
         });
 
-        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7.);
+        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7., 35.);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         Self {
             renderer: Renderer {
