@@ -69,7 +69,7 @@ struct GlobalConstants {
     light_color:        [f32; 3],
     time_in_flight:      f32,
     cells_cnt:          [f32; 2],
-    unused:             [f32; 2]
+    _unused:             [f32; 2]
 }
 
 struct Renderer {
@@ -288,7 +288,7 @@ impl App for BoxesExample {
                 light_color: [0.25, 0.5, 0.75],
                 time_in_flight: 0.0,
                 cells_cnt: [CELLS_CNT as f32; 2],
-                unused: [0.0; 2]
+                _unused: [0.0; 2]
             },
         }
     }

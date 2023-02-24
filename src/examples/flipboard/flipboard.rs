@@ -1,6 +1,6 @@
 use std::{iter, mem};
 
-use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, Face, MultisampleState, TextureView, TextureViewDescriptor, ComputePipelineDescriptor, BindGroupEntry, BindGroupDescriptor, ComputePipeline, BindGroup, SamplerDescriptor, Sampler, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, util::{BufferInitDescriptor, DeviceExt}, BufferUsages, Buffer, VertexBufferLayout, VertexAttribute, BufferDescriptor, BindGroupLayout, RenderPassDepthStencilAttachment, Operations, DepthStencilState, StencilState, DepthBiasState, BufferAddress};
+use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, MultisampleState, TextureView, ComputePipelineDescriptor, BindGroupEntry, BindGroupDescriptor, ComputePipeline, BindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, util::{BufferInitDescriptor, DeviceExt}, BufferUsages, Buffer, VertexBufferLayout, VertexAttribute, BufferDescriptor, BindGroupLayout, RenderPassDepthStencilAttachment, Operations, DepthStencilState, StencilState, DepthBiasState, BufferAddress};
 use winit::event::WindowEvent;
 
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
@@ -88,7 +88,7 @@ impl App for FlipboardExample {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        visibility: wgpu::ShaderStages::VERTEX,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
@@ -142,7 +142,7 @@ impl App for FlipboardExample {
 
             flaps_pipeline,
             game_compute_pipeline,
-            game_compute_workgroups_count: GAME_TEXTURE_SIZE/GAME_WORKGROUP_SIZE + 1,
+            game_compute_workgroups_count: GAME_TEXTURE_SIZE/GAME_WORKGROUP_SIZE,
 
             flap_pad_vb,
             flap_pad_ib,
@@ -157,77 +157,12 @@ impl App for FlipboardExample {
                 output_res: [sc.width as f32, sc.height as f32],
                 input_res: [GAME_TEXTURE_SIZE as f32; 2],
                 time: 0.0,
-                unused: [0.0; 3],
+                time_delta: 0.0,
+                _unused: [0.0; 2],
             },
             camera,
         }
     }
-
-    // fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
-    //     let mut compute_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-    //         label: Some("Compute Encoder"),
-    //     });
-        
-    //     compute_encoder.push_debug_group("game output compute pass");
-    //     {
-    //         let mut cpass = compute_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("Game output") });
-    //         cpass.set_pipeline(&self.renderer.game_compute_pipeline);
-    //         cpass.set_bind_group(0, &self.renderer.globals_bindgroup, &[]);
-    //         cpass.set_bind_group(1, &self.renderer.gamedata_write_bindgroup, &[]);
-    //         cpass.dispatch_workgroups(self.renderer.game_compute_workgroups_count, self.renderer.game_compute_workgroups_count, 1);
-    //     }
-    //     compute_encoder.pop_debug_group();
-        
-    //     let output = surface.get_current_texture()?;
-    //     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-    //     let mut render_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-    //         label: Some("Render Encoder"),
-    //     });
-    //     compute_encoder.push_debug_group("flaps pass");
-    //     {
-    //         self.renderer.queue.write_buffer(&self.renderer.globals_buffer, 0, bytemuck::cast_slice(&self.globals.get()));
-
-    //         let mut render_pass = render_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-    //             label: Some("Render Pass"),
-    //             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-    //                 view: &view,
-    //                 resolve_target: None,
-    //                 ops: wgpu::Operations {
-    //                     load: wgpu::LoadOp::Clear(wgpu::Color {
-    //                         r: 0.2,
-    //                         g: 0.2,
-    //                         b: 0.2,
-    //                         a: 1.0,
-    //                     }),
-    //                     store: true,
-    //                 },
-    //             })],
-    //             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-    //                 view: &self.renderer.depth_tex_view,
-    //                 depth_ops: Some(Operations{
-    //                     load: wgpu::LoadOp::Clear(1.0),
-    //                     store: false,
-    //                 }),
-    //                 stencil_ops: None,
-    //             })
-    //         });
-        
-    //         render_pass.set_pipeline(&self.renderer.flaps_pipeline);
-    //         render_pass.set_vertex_buffer(0, self.renderer.flap_pad_vb.slice(..));
-    //         render_pass.set_vertex_buffer(1, self.renderer.flap_pad_instance_buffer.slice(..));
-    //         render_pass.set_index_buffer(self.renderer.flap_pad_ib.slice(..), wgpu::IndexFormat::Uint16);
-    //         render_pass.set_bind_group(0, &self.renderer.globals_bindgroup, &[]);
-    //         render_pass.set_bind_group(1, &self.renderer.gamedata_read_bindgroup, &[]);
-    //         render_pass.set_bind_group(2, &self.camera.camera_bind_group, &[]);
-    //         render_pass.draw_indexed(0..self.renderer.flap_pad_index_cnt, 0, 0..self.renderer.flap_pad_instances_cnt);
-    //     }
-    //     compute_encoder.pop_debug_group();
-        
-    //     self.renderer.queue.submit([compute_encoder.finish(), render_encoder.finish()]);
-    //     output.present();
-
-    //     Ok(())
-    // }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
         let output = surface.get_current_texture()?;
@@ -260,9 +195,9 @@ impl App for FlipboardExample {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.2,
-                            g: 0.2,
-                            b: 0.2,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
                             a: 1.0,
                         }),
                         store: true,
@@ -290,13 +225,15 @@ impl App for FlipboardExample {
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
         output.present();
-
+        
+        self.globals.time_delta = 0.0;
         Ok(())
     }
     
     fn tick(&mut self, delta: f32) {
         self.camera.tick(delta, &self.renderer.queue);
-        self.globals.time += delta;
+        self.globals.time += delta * 0.5;
+        self.globals.time_delta += delta * 0.5;
     }
 
     fn process_input(&mut self, event: &WindowEvent) -> bool {
@@ -525,12 +462,12 @@ impl FlipboardExample {
             contents: bytemuck::cast_slice(&instance_data),
             usage: BufferUsages::VERTEX,
         });
-
-        let gamedata_buffer = device.create_buffer(&BufferDescriptor {
+        const GAMEDATA_SIZE: usize = (GAME_TEXTURE_SIZE * GAME_TEXTURE_SIZE * (mem::size_of::<[f32; 2]>() as u32)) as usize;
+        let gamedata = [-1e-7; GAMEDATA_SIZE];
+        let gamedata_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("Game data buffer"),
-            size: (GAME_TEXTURE_SIZE * GAME_TEXTURE_SIZE * (mem::size_of::<[f32; 2]>() as u32)) as BufferAddress,
+            contents: bytemuck::cast_slice(&gamedata),
             usage: BufferUsages::STORAGE,
-            mapped_at_creation: false,
         });
 
         let globals_buffer = device.create_buffer(&BufferDescriptor{
@@ -548,7 +485,8 @@ struct Globals {
     output_res:         [f32; 2],
     input_res:          [f32; 2],
     time:               f32,
-    unused:             [f32; 3]
+    time_delta:         f32,
+    _unused:             [f32; 2]
 }
 
 impl Globals {
@@ -556,6 +494,7 @@ impl Globals {
         vec![self.output_res[0], self.output_res[1],
              self.input_res[0], self.input_res[1],
              self.time,
-             0.0, 0.0, 0.0]
+             self.time_delta,
+             0.0, 0.0]
     }
 }
