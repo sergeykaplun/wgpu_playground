@@ -17,4 +17,7 @@ structopt = "0.3.26"
 #cgmath = "0.18.0"
 nalgebra-glm = "0.18.0"
 rand = "0.8.5"
-renderdoc = "0.11.0"
+#renderdoc = "0.11.0"
+tobj = { version = "3.2.1", features = [
+    "async",
+]}

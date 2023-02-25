@@ -8,6 +8,7 @@ use windowed_app::run;
 mod windowed_app;
 mod app;
 mod camera;
+mod assets_helper;
 
 extern crate nalgebra_glm as glm;
 
@@ -17,6 +18,8 @@ mod fullscreen_triangle;
 mod boxes;
 #[path = "./examples/flipboard/flipboard.rs"]
 mod flipboard;
+#[path = "./examples/shadow_mapping/shadow_mapping.rs"]
+mod shadow_mapping;
 
 fn main() {
     let app_variant = AppVariant::from_args();
