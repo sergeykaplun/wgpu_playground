@@ -6,10 +6,10 @@ use winit::event::WindowEvent;
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
 
 static FLIP_PAD_DATA: &'static [f32] = &[
-    -1.0, 0.0, 0.0, 0.0, 0.0,
-    -1.0, 1.0, 0.0, 0.0, 1.0,
-     1.0, 1.0, 0.0, 1.0, 1.0,
-     1.0, 0.0, 0.0, 1.0, 0.0,
+    -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    -1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+     1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0,
+     1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
 ];
 
 static FLIP_PAD_INDICES: &[u16] = &[
@@ -232,8 +232,8 @@ impl App for FlipboardExample {
     
     fn tick(&mut self, delta: f32) {
         self.camera.tick(delta, &self.renderer.queue);
-        self.globals.time += delta * 0.5;
-        self.globals.time_delta += delta * 0.5;
+        self.globals.time += delta;
+        self.globals.time_delta += delta;
     }
 
     fn process_input(&mut self, event: &WindowEvent) -> bool {
@@ -245,7 +245,7 @@ impl FlipboardExample {
     fn create_render_pipeline(device: &Device, tex_format: TextureFormat, globals_bgl: &BindGroupLayout, gamedata_bgl: &BindGroupLayout, shader_type: ShaderType) -> RenderPipeline {
         let vertex_buffer_layout = [
             VertexBufferLayout {
-                array_stride: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
+                array_stride: std::mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &[
                     VertexAttribute{
@@ -257,6 +257,11 @@ impl FlipboardExample {
                         format: wgpu::VertexFormat::Float32x2,
                         offset: mem::size_of::<[f32; 3]>() as u64,
                         shader_location: 1,
+                    },
+                    VertexAttribute{
+                        format: wgpu::VertexFormat::Float32x3,
+                        offset: mem::size_of::<[f32; 5]>() as u64,
+                        shader_location: 2,
                     }
                 ],
             },
@@ -267,12 +272,12 @@ impl FlipboardExample {
                     VertexAttribute{
                         format: wgpu::VertexFormat::Float32x2,
                         offset: 0,
-                        shader_location: 2,
+                        shader_location: 3,
                     },
                     VertexAttribute{
                         format: wgpu::VertexFormat::Float32x2,
                         offset: mem::size_of::<[f32; 2]>() as u64,
-                        shader_location: 3,
+                        shader_location: 4,
                     }
                 ],
             },

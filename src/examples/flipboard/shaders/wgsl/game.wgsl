@@ -37,12 +37,12 @@ fn main(@builtin(local_invocation_id) localInvocationID: vec3<u32>, @builtin(wor
 }
 
 fn get_pattern(in_uv: vec2<f32>) -> f32 {
-    let a = globals.time * .25;
-    let r_uv = mat2x2(cos(a), -sin(a), sin(a), cos(a)) * (in_uv - 0.5) + vec2(0.5);
-    let uv = abs(r_uv - 0.5);
+    // let a = globals.time * .25;
+    // let r_uv = mat2x2(cos(a), -sin(a), sin(a), cos(a)) * (in_uv - 0.5) + vec2(0.5);
+    // let uv = abs(r_uv - 0.5);
     
-    let diagon = step(uv.y, uv.x + .05) * step(uv.x - .05, uv.y);
-    return diagon;
+    // let diagon = step(uv.y, uv.x + .05) * step(uv.x - .05, uv.y);
+    // return diagon;
 
-    //return step(distance(uv, vec2(0.5 + sin(globals.time * 0.25) * 0.25, 0.5)), .25);
+    return step(distance(in_uv, vec2(0.5 + sin(globals.time * 0.25) * 0.25, 0.5)), .25);
 }
