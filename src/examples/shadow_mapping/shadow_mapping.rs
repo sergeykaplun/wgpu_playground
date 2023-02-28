@@ -1,6 +1,6 @@
 use std::{iter, mem};
 
-use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, RenderPipelineDescriptor, Sampler, BindGroup, Buffer, BindGroupLayout, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingType, BindGroupEntry};
+use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, RenderPipelineDescriptor, Sampler, BindGroup, Buffer, BindGroupLayout, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingType, BindGroupEntry, SamplerBorderColor};
 use winit::event::WindowEvent;
 
 use crate::{app::{App, ShaderType}, assets_helper, model::Model, camera::{ArcballCamera, Camera}};
@@ -13,7 +13,6 @@ struct Renderer {
     shadow_pipeline: RenderPipeline,
     shadow_texture_view: TextureView,
     shadow_tex_bind_group: BindGroup,
-    //shadow_sampler: Sampler,
     
     light_buffer: Buffer,
     light_bind_group: BindGroup,
@@ -23,12 +22,12 @@ pub struct ShadowMappingExample {
     renderer: Renderer,
     model: Model,
     camera: ArcballCamera,
-    
+    time_in_flight: f32,
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-const SHADOW_TEX_SIZE: u32 = 1024u32;
+const SHADOW_TEX_SIZE: u32 = 512u32;
 
 
 impl App for ShadowMappingExample {
@@ -40,13 +39,13 @@ impl App for ShadowMappingExample {
     ) -> Self {
         let model = pollster::block_on(
             assets_helper::load_model(
-                "human.obj",
+                "human_floor.obj",
                 &device,
             )
         ).expect("Error while loading model");
 
         let (light_bind_group_layout, light_bind_group, light_buffer) = {
-            let light_uniform_size = mem::size_of::<[f32; 16]>() as wgpu::BufferAddress;
+            let light_uniform_size = mem::size_of::<LightData>() as wgpu::BufferAddress;
             let light_buf = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 size: light_uniform_size,
@@ -59,7 +58,7 @@ impl App for ShadowMappingExample {
                     label: None,
                     entries: &[wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -87,13 +86,13 @@ impl App for ShadowMappingExample {
         let shadow_pipeline = Self::create_shadow_pipeline(device, &light_bind_group_layout, shader_type);
         
         let renderer = Renderer { queue, pipeline, depth_tex_view, shadow_pipeline, light_bind_group, shadow_texture_view, shadow_tex_bind_group, light_buffer };
-        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 100., 7., 35.);
-        Self{ renderer, model, camera }
+        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 35.);
+        Self{ renderer, model, camera, time_in_flight: 0.0 }
     }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
-        let cur_light_mat = Self::get_light_matrix();
-        self.renderer.queue.write_buffer(&self.renderer.light_buffer, 0, bytemuck::cast_slice(&cur_light_mat));
+        let light_data = Self::get_light_matrix(self.time_in_flight);
+        self.renderer.queue.write_buffer(&self.renderer.light_buffer, 0, bytemuck::cast_slice(&[light_data]));
         
         let output = surface.get_current_texture()?;
         let view = output
@@ -137,9 +136,9 @@ impl App for ShadowMappingExample {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.2,
-                            g: 0.2,
-                            b: 0.2,
+                            r: 0.1,
+                            g: 0.1,
+                            b: 0.1,
                             a: 1.0,
                         }),
                         store: true,
@@ -178,6 +177,7 @@ impl App for ShadowMappingExample {
 
     fn tick(&mut self, delta: f32) {
         self.camera.tick(delta, &self.renderer.queue);
+        self.time_in_flight += delta;
     }
 
 }
@@ -435,42 +435,23 @@ impl ShadowMappingExample {
         (shadow_view, shadow_sampler)
     }
 
-    fn get_light_matrix() -> [[f32; 4]; 4] {
-        let light_position = glm::Vec3::new(50., 100., -100.);
+    fn get_light_matrix(time: f32) -> LightData {
+        let distance = 10.;
+
+        let light_position = glm::Vec3::new(time.sin() * distance, 10., time.cos() * distance);
         let light_view_matrix = glm::look_at(&light_position, &glm::Vec3::new(0.0, 0.0, 0.0), &glm::Vec3::new(0.0, 1.0, 0.0));
-        let light_proj_matrix = glm::ortho_lh(-100., 100., -100., 100., -100., 100.);
-
-        (light_proj_matrix * light_view_matrix).into()
+        let light_proj_matrix = glm::ortho(-10., 10., -10., 10., -100., 100.);
+        
+        LightData {
+            view_proj: (light_proj_matrix * light_view_matrix).into(),
+            position: glm::Vec4::new(light_position.x, light_position.y, light_position.z, 0.0).into()
+        }
     }
+}
 
-    // fn create_shadow_texture(device: &wgpu::Device) -> (TextureView, Sampler) {
-    //     let size = SHADOW_TEX_SIZE;
-    //     let texture_extent = wgpu::Extent3d {
-    //         width: size,
-    //         height: size,
-    //         depth_or_array_layers: 1,
-    //     };
-    //     let texture = device.create_texture(&wgpu::TextureDescriptor {
-    //         label: None,
-    //         size: texture_extent,
-    //         mip_level_count: 1,
-    //         sample_count: 1,
-    //         dimension: wgpu::TextureDimension::D2,
-    //         format: wgpu::TextureFormat::R32Float,
-    //         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-    //         view_formats: &[],
-    //     });
-    //     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    //     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-    //         address_mode_u: wgpu::AddressMode::ClampToEdge,
-    //         address_mode_v: wgpu::AddressMode::ClampToEdge,
-    //         address_mode_w: wgpu::AddressMode::ClampToEdge,
-    //         mag_filter: wgpu::FilterMode::Linear,
-    //         min_filter: wgpu::FilterMode::Linear,
-    //         mipmap_filter: wgpu::FilterMode::Linear,
-    //         ..Default::default()
-    //     });
-
-    //     (texture_view, sampler)
-    // }
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct LightData {
+    view_proj: [[f32; 4]; 4],
+    position: [f32; 4]
 }

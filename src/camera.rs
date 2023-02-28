@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use wgpu::{Buffer, BindGroup, Device, util::DeviceExt, Queue};
 use winit::{event::{WindowEvent, ElementState, MouseButton, MouseScrollDelta}, dpi::PhysicalPosition};
 
@@ -91,6 +93,8 @@ impl Camera for ArcballCamera {
                 if self.mouse_pressed {
                     self.azimuth -= ((position.x - self.mouse_last_coord.x) as f32) / self.width * self.speed;
                     self.polar -= ((position.y - self.mouse_last_coord.y) as f32) / self.height * self.speed;
+                    
+                    self.polar = self.polar.clamp(-PI * 0.35, 0.0);
                 }
 
                 self.mouse_last_coord.clone_from(position);

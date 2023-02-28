@@ -4,7 +4,7 @@ use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceErr
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
 
 use crate::app::{App, AppVariant};
-//use renderdoc::*;
+use renderdoc::*;
 
 pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Result<(), CreateSurfaceError>{
     env_logger::init();
@@ -116,14 +116,14 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                             ..
                         } => {
                             match input.virtual_keycode.unwrap() {
-                                // VirtualKeyCode::Q => match RenderDoc::<V110>::new().as_mut() {
-                                //     Ok(rd) => {
-                                //         rd.trigger_capture();
-                                //     }
-                                //     Err(error) => {
-                                //         println!("Unable to connect: {}", error)
-                                //     },
-                                // },
+                                VirtualKeyCode::Q => match RenderDoc::<V110>::new().as_mut() {
+                                    Ok(rd) => {
+                                        rd.trigger_capture();
+                                    }
+                                    Err(error) => {
+                                        println!("Unable to connect: {}", error)
+                                    },
+                                },
                                 _ => ()
                             };
                         },

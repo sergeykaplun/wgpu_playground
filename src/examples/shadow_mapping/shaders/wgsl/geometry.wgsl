@@ -3,6 +3,7 @@ struct CameraUniform {
 };
 struct LightUniform {
     view_proj: mat4x4<f32>,
+    position: vec4<f32>,
 };
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -37,40 +38,26 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     return out;
 }
 
-// fn fetch_shadow(homogeneous_coords: vec4<f32>) -> f32 {
-//     if (homogeneous_coords.w <= 0.0) {
-//         return 1.0;
-//     }
-//     // compensate for the Y-flip difference between the NDC and texture coordinates
-//     let flip_correction = vec2<f32>(0.5, -0.5);
-//     // compute texture coordinates for shadow lookup
-//     let proj_correction = 1.0 / homogeneous_coords.w;
-//     let light_local = homogeneous_coords.xy * flip_correction * proj_correction + vec2<f32>(0.5, 0.5);
-//     // do the lookup, using HW PCF and comparison
-//     let depth_ref = homogeneous_coords.z * proj_correction;
-//     return textureSampleCompare(t_shadow, sampler_shadow, light_local, 0, depth_ref);
-// }
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Percentage-closer filtering. Sample texels in the region
-  // to smooth the result.
-  var visibility = 0.0;
-  let oneOverShadowDepthTextureSize = 1.0 / 1024.;
-  for (var y = -1; y <= 1; y++) {
-    for (var x = -1; x <= 1; x++) {
-      let offset = vec2<f32>(vec2(x, y)) * oneOverShadowDepthTextureSize;
+  // var visibility = 0.0;
+  // let oneOverShadowDepthTextureSize = 1.0 / 1024.;
+  // for (var y = -1; y <= 1; y++) {
+  //   for (var x = -1; x <= 1; x++) {
+  //     let offset = vec2<f32>(vec2(x, y)) * oneOverShadowDepthTextureSize;
 
-      visibility += textureSampleCompare(
-        t_shadow, sampler_shadow,
-        in.shadow_pos.xy + offset, in.shadow_pos.z - 0.007
-      );
-    }
-  }
-  visibility /= 9.0;
+  //     visibility += textureSampleCompare(
+  //       t_shadow, sampler_shadow,
+  //       in.shadow_pos.xy + offset, in.shadow_pos.z - 0.007
+  //     );
+  //   }
+  // }
+  // visibility /= 9.0;
 
-  //let lambertFactor = max(dot(normalize(scene.lightPos - input.fragPos), input.fragNorm), 0.0);
-  //let lightingFactor = min(ambientFactor + visibility * lambertFactor, 1.0);
-  //return vec4(lightingFactor * albedo, 1.0);
-  return vec4(visibility);
+  var visibility = textureSampleCompare(t_shadow, sampler_shadow, in.shadow_pos.xy, in.shadow_pos.z);
+  visibility = select(visibility, 1.0, length(in.world_pos.xz) > 22.);
+  
+  let lambertFactor = max(dot(normalize(light.position - in.world_pos).xyz, in.normal), 0.0);
+  let lightingFactor = min(visibility * lambertFactor, 1.0);
+  return vec4(lightingFactor);
 }

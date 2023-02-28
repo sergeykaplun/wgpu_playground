@@ -5,8 +5,8 @@ use wgpu::util::DeviceExt;
 
 use crate::model;
 
-pub async fn load_string(_file_name: &str) -> anyhow::Result<String> {
-    let path = std::path::Path::new("./assets/human_floor.obj");//.join(file_name);
+pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
+    let path = std::path::Path::new("./assets/").join(file_name);
     let txt = std::fs::read_to_string(path)?;
     Ok(txt)
 }
@@ -29,31 +29,6 @@ pub async fn load_model(file_name: &str, device: &wgpu::Device) -> anyhow::Resul
         },
     )
     .await?;
-
-    // let mut materials = Vec::new();
-    // for m in obj_materials? {
-    //     let diffuse_texture = load_texture(&m.diffuse_texture, device, queue).await?;
-    //     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-    //         layout,
-    //         entries: &[
-    //             wgpu::BindGroupEntry {
-    //                 binding: 0,
-    //                 resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-    //             },
-    //             wgpu::BindGroupEntry {
-    //                 binding: 1,
-    //                 resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-    //             },
-    //         ],
-    //         label: None,
-    //     });
-
-    //     materials.push(model::Material {
-    //         name: m.name,
-    //         diffuse_texture,
-    //         bind_group,
-    //     })
-    // }
 
     let meshes = models
         .into_iter()
