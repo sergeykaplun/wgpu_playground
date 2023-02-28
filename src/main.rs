@@ -10,7 +10,6 @@ mod windowed_app;
 mod app;
 mod camera;
 mod assets_helper;
-mod model;
 
 extern crate nalgebra_glm as glm;
 

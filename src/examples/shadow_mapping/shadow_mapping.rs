@@ -1,9 +1,9 @@
 use std::{iter, mem};
 
-use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, RenderPipelineDescriptor, Sampler, BindGroup, Buffer, BindGroupLayout, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingType, BindGroupEntry, SamplerBorderColor};
+use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, RenderPipelineDescriptor, Sampler, BindGroup, Buffer, BindGroupLayout, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingType, BindGroupEntry};
 use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, assets_helper, model::Model, camera::{ArcballCamera, Camera}};
+use crate::{app::{App, ShaderType}, assets_helper::{self, Mesh}, camera::{ArcballCamera, Camera}};
 struct Renderer {
     queue: Queue,
     
@@ -20,7 +20,7 @@ struct Renderer {
 
 pub struct ShadowMappingExample {
     renderer: Renderer,
-    model: Model,
+    meshes: Vec<Mesh>,
     camera: ArcballCamera,
     time_in_flight: f32,
 }
@@ -37,7 +37,7 @@ impl App for ShadowMappingExample {
         queue: wgpu::Queue,
         shader_type: ShaderType
     ) -> Self {
-        let model = pollster::block_on(
+        let meshes = pollster::block_on(
             assets_helper::load_model(
                 "human_floor.obj",
                 &device,
@@ -81,13 +81,13 @@ impl App for ShadowMappingExample {
         };
 
         let (shadow_texture_view, shadow_sampler) = Self::create_shadow_texture(device);
-        let (pipeline, shadow_tex_bind_group) = Self::create_geometry_pipeline(&device, sc.format, &light_bind_group_layout, &shadow_texture_view, &shadow_sampler, shader_type);
+        let (pipeline, shadow_tex_bind_group) = Self::create_output_pipeline(&device, sc.format, &light_bind_group_layout, &shadow_texture_view, &shadow_sampler, shader_type);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         let shadow_pipeline = Self::create_shadow_pipeline(device, &light_bind_group_layout, shader_type);
         
         let renderer = Renderer { queue, pipeline, depth_tex_view, shadow_pipeline, light_bind_group, shadow_texture_view, shadow_tex_bind_group, light_buffer };
         let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 35.);
-        Self{ renderer, model, camera, time_in_flight: 0.0 }
+        Self{ renderer, meshes, camera, time_in_flight: 0.0 }
     }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
@@ -120,7 +120,7 @@ impl App for ShadowMappingExample {
             pass.set_pipeline(&self.renderer.shadow_pipeline);
             pass.set_bind_group(0, &self.renderer.light_bind_group, &[]);
 
-            for mesh in &self.model.meshes {
+            for mesh in &self.meshes {
                 pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..mesh.num_elements, 0, 0..1);
@@ -158,7 +158,7 @@ impl App for ShadowMappingExample {
             render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &self.renderer.light_bind_group, &[]);
             render_pass.set_bind_group(2, &self.renderer.shadow_tex_bind_group, &[]);
-            for mesh in &self.model.meshes {
+            for mesh in &self.meshes {
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..mesh.num_elements, 0, 0..1);
@@ -183,7 +183,7 @@ impl App for ShadowMappingExample {
 }
 
 impl ShadowMappingExample {
-    fn create_geometry_pipeline(device: &wgpu::Device, tex_format: TextureFormat, light_bind_group_layout: &BindGroupLayout, shadow_tex_view: &TextureView, shadow_sampler: &Sampler, shader_type: ShaderType) -> (wgpu::RenderPipeline, BindGroup) {
+    fn create_output_pipeline(device: &wgpu::Device, tex_format: TextureFormat, light_bind_group_layout: &BindGroupLayout, shadow_tex_view: &TextureView, shadow_sampler: &Sampler, shader_type: ShaderType) -> (wgpu::RenderPipeline, BindGroup) {
         let buffer_layout = 
         [
             VertexBufferLayout{
@@ -290,13 +290,13 @@ impl ShadowMappingExample {
 
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
-                label: Some("Boxes pipeline layout"),
+                label: Some("Output pipeline layout"),
                 bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout, &shadow_bind_group_layout],
                 push_constant_ranges: &[],
             }
         );
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Boxes pipeline"),
+            label: Some("Output pipeline"),
             layout: Some(&pipeline_layout),
             vertex: vertex_state,
             primitive: PrimitiveState {
@@ -368,7 +368,7 @@ impl ShadowMappingExample {
                 depth_compare: wgpu::CompareFunction::LessEqual,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState {
-                    constant: 2, // corresponds to bilinear filtering
+                    constant: 2,
                     slope_scale: 2.0,
                     clamp: 0.0,
                 },
