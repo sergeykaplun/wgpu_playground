@@ -26,6 +26,6 @@ fn main() {
     let app_variant = AppVariant::from_args();
     //pollster::block_on(run::<FullscreenTriangleExample>("FullscreenTriangleExample", app_variant)).expect("FullscreenTriangleExample exited unexpectedly");
     //pollster::block_on(run::<BoxesExample>("BoxesExample", app_variant)).expect("BoxesExample exited unexpectedly");
-    //pollster::block_on(run::<FlipboardExample>("FlipboardExample", app_variant)).expect("FlipboardExample exited unexpectedly");
-    pollster::block_on(run::<ShadowMappingExample>("ShadowMappingExample", app_variant)).expect("ShadowMappingExample exited unexpectedly");
+    pollster::block_on(run::<FlipboardExample>("FlipboardExample", app_variant)).expect("FlipboardExample exited unexpectedly");
+    //pollster::block_on(run::<ShadowMappingExample>("ShadowMappingExample", app_variant)).expect("ShadowMappingExample exited unexpectedly");
 }

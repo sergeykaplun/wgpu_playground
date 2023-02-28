@@ -186,7 +186,7 @@ impl App for FlipboardExample {
         encoder.pop_debug_group();
         
         {
-            self.renderer.queue.write_buffer(&self.renderer.globals_buffer, 0, bytemuck::cast_slice(&self.globals.get()));
+            self.renderer.queue.write_buffer(&self.renderer.globals_buffer, 0, bytemuck::cast_slice(&[self.globals]));
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -486,20 +486,12 @@ impl FlipboardExample {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     output_res:         [f32; 2],
     input_res:          [f32; 2],
     time:               f32,
     time_delta:         f32,
     _unused:             [f32; 2]
-}
-
-impl Globals {
-    fn get(&self) -> Vec<f32> {
-        vec![self.output_res[0], self.output_res[1],
-             self.input_res[0], self.input_res[1],
-             self.time,
-             self.time_delta,
-             0.0, 0.0]
-    }
 }
