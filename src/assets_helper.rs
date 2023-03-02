@@ -42,7 +42,9 @@ pub async fn load_model(file_name: &str, device: &wgpu::Device) -> anyhow::Resul
                 .flat_map(|i|
                         vec!(m.mesh.positions[i * 3], m.mesh.positions[i * 3 + 1], m.mesh.positions[i * 3 + 2],
                             0.0, 0.0,
-                            m.mesh.normals[i * 3], m.mesh.normals[i * 3 + 1], m.mesh.normals[i * 3 + 2])
+                            0.0, 0.0, 1.0
+                            //m.mesh.normals[i * 3], m.mesh.normals[i * 3 + 1], m.mesh.normals[i * 3 + 2]
+                        )
                 )
                 .collect::<Vec<_>>();
 

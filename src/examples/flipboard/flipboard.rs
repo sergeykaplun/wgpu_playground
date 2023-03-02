@@ -1,9 +1,9 @@
-use std::{iter, mem};
+use std::{iter, mem, ops::Mul};
 
 use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, MultisampleState, TextureView, ComputePipelineDescriptor, BindGroupEntry, BindGroupDescriptor, ComputePipeline, BindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, util::{BufferInitDescriptor, DeviceExt}, BufferUsages, Buffer, VertexBufferLayout, VertexAttribute, BufferDescriptor, BindGroupLayout, RenderPassDepthStencilAttachment, Operations, DepthStencilState, StencilState, DepthBiasState};
 use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}};
+use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, assets_helper::{Mesh, self}};
 
 static FLIP_PAD_DATA: &'static [f32] = &[
     -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -16,8 +16,8 @@ static FLIP_PAD_INDICES: &[u16] = &[
     0, 2, 1, 2, 0, 3
 ];
 
-const GAME_TEXTURE_SIZE: u32 = 32;
-const GAME_WORKGROUP_SIZE: u32 = 16u32;
+//const GAME_TEXTURE_SIZE: u32 = 16;
+const GAME_WORKGROUP_SIZE: u32 = 16;
 
 struct Renderer {
     queue: Queue,
@@ -31,13 +31,15 @@ struct Renderer {
     
     flaps_pipeline: wgpu::RenderPipeline,
     game_compute_pipeline: wgpu::ComputePipeline,
-    game_compute_workgroups_count: u32,
+    game_compute_workgroups_count: [u32; 2],
 
-    flap_pad_vb: Buffer,
-    flap_pad_ib: Buffer,
-    flap_pad_index_cnt: u32,
+    // flap_pad_vb: Buffer,
+    // flap_pad_ib: Buffer,
+    // flap_pad_index_cnt: u32,
     flap_pad_instance_buffer: Buffer,
     flap_pad_instances_cnt: u32,
+
+    meshes: Vec<Mesh>,
 }
 
 pub(crate) struct FlipboardExample {
@@ -129,7 +131,14 @@ impl App for FlipboardExample {
                 resource: gamedata_buffer.as_entire_binding(),
             }],
         });
-
+        
+        let meshes = pollster::block_on(
+            assets_helper::load_model(
+                "111.obj",
+                &device,
+            )
+        ).expect("Error while loading model");
+        
         let renderer = Renderer {
             queue,
             depth_tex_view,
@@ -142,20 +151,22 @@ impl App for FlipboardExample {
 
             flaps_pipeline,
             game_compute_pipeline,
-            game_compute_workgroups_count: GAME_TEXTURE_SIZE/GAME_WORKGROUP_SIZE,
-
-            flap_pad_vb,
-            flap_pad_ib,
-            flap_pad_index_cnt: FLIP_PAD_INDICES.len() as u32,
+            game_compute_workgroups_count: FlapPad::RESOLUTION.map(|v| (v/GAME_WORKGROUP_SIZE).max(1)),
+            
+            // flap_pad_vb,
+            // flap_pad_ib,
+            // flap_pad_index_cnt: FLIP_PAD_INDICES.len() as u32,
 
             flap_pad_instance_buffer,
-            flap_pad_instances_cnt: GAME_TEXTURE_SIZE * GAME_TEXTURE_SIZE * 3
+            flap_pad_instances_cnt: FlapPad::RESOLUTION[0] * FlapPad::RESOLUTION[1] * 3,
+
+            meshes
         };
         Self {
             renderer,
             globals: Globals {
                 output_res: [sc.width as f32, sc.height as f32],
-                input_res: [GAME_TEXTURE_SIZE as f32; 2],
+                input_res: FlapPad::RESOLUTION.map(|v| v as f32),
                 time: 0.0,
                 time_delta: 0.0,
                 _unused: [0.0; 2],
@@ -181,7 +192,8 @@ impl App for FlipboardExample {
             cpass.set_pipeline(&self.renderer.game_compute_pipeline);
             cpass.set_bind_group(0, &self.renderer.globals_bindgroup, &[]);
             cpass.set_bind_group(1, &self.renderer.gamedata_write_bindgroup, &[]);
-            cpass.dispatch_workgroups(self.renderer.game_compute_workgroups_count, self.renderer.game_compute_workgroups_count, 1);
+            //cpass.dispatch_workgroups(self.renderer.game_compute_workgroups_count, self.renderer.game_compute_workgroups_count, 1);
+            cpass.dispatch_workgroups(self.renderer.game_compute_workgroups_count[0], self.renderer.game_compute_workgroups_count[1], 1);
         }
         encoder.pop_debug_group();
         
@@ -195,9 +207,9 @@ impl App for FlipboardExample {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
+                            r: 0.1,
+                            g: 0.1,
+                            b: 0.1,
                             a: 1.0,
                         }),
                         store: true,
@@ -214,13 +226,20 @@ impl App for FlipboardExample {
             });
         
             render_pass.set_pipeline(&self.renderer.flaps_pipeline);
-            render_pass.set_vertex_buffer(0, self.renderer.flap_pad_vb.slice(..));
-            render_pass.set_vertex_buffer(1, self.renderer.flap_pad_instance_buffer.slice(..));
-            render_pass.set_index_buffer(self.renderer.flap_pad_ib.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_bind_group(0, &self.renderer.globals_bindgroup, &[]);
             render_pass.set_bind_group(1, &self.renderer.gamedata_read_bindgroup, &[]);
             render_pass.set_bind_group(2, &self.camera.camera_bind_group, &[]);
-            render_pass.draw_indexed(0..self.renderer.flap_pad_index_cnt, 0, 0..self.renderer.flap_pad_instances_cnt);
+            render_pass.set_vertex_buffer(1, self.renderer.flap_pad_instance_buffer.slice(..));
+            
+            for mesh in &self.renderer.meshes {
+                render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..mesh.num_elements, 0, 0..self.renderer.flap_pad_instances_cnt);
+                
+                //render_pass.set_vertex_buffer(0, self.renderer.flap_pad_vb.slice(..));
+                //render_pass.set_index_buffer(self.renderer.flap_pad_ib.slice(..), wgpu::IndexFormat::Uint16);
+                //render_pass.draw_indexed(0..self.renderer.flap_pad_index_cnt, 0, 0..self.renderer.flap_pad_instances_cnt);
+            }
         }
         
         self.renderer.queue.submit(iter::once(encoder.finish()));
@@ -390,29 +409,6 @@ impl FlipboardExample {
         })
     }
 
-    // fn create_texture(device: &Device) -> (TextureView, Sampler) {
-    //     let texture_desc = wgpu::TextureDescriptor {
-    //         size: wgpu::Extent3d {
-    //             width: GAME_TEXTURE_SIZE,
-    //             height: GAME_TEXTURE_SIZE,
-    //             depth_or_array_layers: 1,
-    //         },
-    //         mip_level_count: 1,
-    //         sample_count: 1,
-    //         dimension: wgpu::TextureDimension::D2,
-    //         format: TextureFormat::R32Float,
-    //         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-    //         label: None,
-    //         view_formats: &[],
-    //     };
-    //     let texture = device.create_texture(&texture_desc);
-    //     let mut descriptor = TextureViewDescriptor::default();
-    //     descriptor.label = Some("Intermediate texture");
-    //     let tex_view = texture.create_view(&descriptor);
-    //     let tex_sampler = device.create_sampler(&SamplerDescriptor::default());
-    //     (tex_view, tex_sampler)
-    // }
-
     const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
     fn create_depth_texture(
         config: &wgpu::SurfaceConfiguration,
@@ -448,26 +444,12 @@ impl FlipboardExample {
             usage: BufferUsages::INDEX,
         });
         
-        let flap_size = 1./(GAME_TEXTURE_SIZE as f32);
-        let instance_data: Vec<f32> = (0..GAME_TEXTURE_SIZE).flat_map(|y|{
-            (0..GAME_TEXTURE_SIZE).flat_map(move |x|{
-                (0..3).flat_map(move |id|{
-                    let pos_x = -1.0 + flap_size + (x as f32) * 2. * flap_size;
-                    let mut pos_y = -1.0 + flap_size + (y as f32) * 2. * flap_size;
-                    if id == 1 {
-                        pos_y -= flap_size;
-                    }
-                    vec![flap_size, flap_size, pos_x, pos_y]
-                })
-            })
-        }).collect();
-
         let flap_pad_instance_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("Flap pad instance data"),
-            contents: bytemuck::cast_slice(&instance_data),
+            contents: bytemuck::cast_slice(&FlapPad::get_flaps_size_and_positions()),
             usage: BufferUsages::VERTEX,
         });
-        const GAMEDATA_SIZE: usize = (GAME_TEXTURE_SIZE * GAME_TEXTURE_SIZE * (mem::size_of::<[f32; 2]>() as u32)) as usize;
+        const GAMEDATA_SIZE: usize = (FlapPad::RESOLUTION[0] * FlapPad::RESOLUTION[1] * (mem::size_of::<[f32; 2]>() as u32)) as usize;
         let gamedata = [-1e-7; GAMEDATA_SIZE];
         let gamedata_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("Game data buffer"),
@@ -483,6 +465,26 @@ impl FlipboardExample {
         });
 
         (flap_pad_vb, flap_pad_ib, flap_pad_instance_buffer, gamedata_buffer, globals_buffer)
+    }
+}
+
+struct FlapPad {
+}
+
+impl FlapPad {
+    const WORLD_SIZE: [f32; 2] = [2.0, 1.0];
+    const RESOLUTION: [u32; 2] = [32, 16];
+
+    fn get_flaps_size_and_positions() -> Vec<f32>{
+        let flap_size: [f32; 2] = [Self::WORLD_SIZE[0]/(Self::RESOLUTION[0] as f32), Self::WORLD_SIZE[1]/(Self::RESOLUTION[1] as f32)];
+        let res: Vec<f32> = (0..Self::RESOLUTION[1]).flat_map(|y|{
+            (0..Self::RESOLUTION[0]).flat_map(move |x|{
+                let pos_x = -Self::WORLD_SIZE[0] + flap_size[0] + (x as f32) * 2.0 * flap_size[0];
+                let pos_y = -Self::WORLD_SIZE[1] + flap_size[1] + (y as f32) * 2.0 * flap_size[1];
+                vec![flap_size[0], flap_size[1], pos_x, pos_y].repeat(3)
+            })
+        }).collect();
+        res
     }
 }
 

@@ -42,7 +42,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let cur_clr = step(0.0, in_val);
     let next_clr = 1.0 - cur_clr;
 
-    var pos = vec3(in.position.xy * in.flap_scale, 0.0);
+    var pos = vec3(in.position.xy * in.flap_scale * .95, 0.0);
     switch (in.instance_id % 3u) {
         case 0u: {
             pos = pos + vec3(in.flap_pos, 0.0);
@@ -55,14 +55,14 @@ fn vs_main(in: VertexInput) -> VertexOutput {
             break;
         }
         case 1u: {
-            pos = pos + vec3(in.flap_pos, 0.0);
+            pos = -pos + vec3(in.flap_pos, 0.0);
             out.albedo = cur_clr;
             break;
         }
         case 2u: {
             // TODO rewrite to lerp
             if is_flapping {
-                let rotmat = rotateX(abs(in_val) * 3.141592);
+                let rotmat = rotate_x(abs(in_val) * 3.141592);
                 pos = pos * rotmat + vec3(in.flap_pos, 0.0001);
                 out.albedo = cur_clr;
                 out.nrm = rotmat * in.normal;
@@ -84,11 +84,13 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput, @builtin(front_facing) is_ff: bool ) -> @location(0) vec4<f32> {
-    let DARK = vec4(0.1);
-    let LIGHT = vec4(0.6);
-
+    let DARK = vec4(0.2);
+    let LIGHT = vec4(0.8);
+    let TEAL = vec4(0.0, 128.0, 128.0, 255.0)/255.;
+    let CORAL = vec4(255.0, 127.0, 80.0, 255.0)/255.;
+    
     let val = select(1.0 - in.albedo, in.albedo, is_ff);
-    let albedo = mix(DARK, LIGHT, val);
+    let albedo = mix(TEAL, CORAL, val);
 
     let light_pos = vec3(0.0, 10.0, 100.0);
     let light_dir = normalize(light_pos - in.world_pos);
@@ -97,8 +99,15 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_ff: bool ) -> @location(0
     return albedo * diffuse;
 }
 
-fn rotateX(angle: f32) -> mat3x3<f32>{
-    let axis = vec3(1.0, 0.0, 0.0);
+fn rotate_x(angle: f32) -> mat3x3<f32>{
+    return rotate_along(vec3(1.0, 0.0, 0.0), angle);
+}
+
+fn rotate_y(angle: f32) -> mat3x3<f32>{
+    return rotate_along(vec3(0.0, 1.0, 0.0), angle);
+}
+
+fn rotate_along(axis: vec3<f32>, angle: f32) -> mat3x3<f32>{
     let s = sin(angle);
     let c = cos(angle);
     let oc = 1.0 - c;
