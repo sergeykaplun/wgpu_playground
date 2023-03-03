@@ -1,15 +1,17 @@
 const MIN_FLAP_VAL: f32 = 1e-7;
-
-struct Globals {
-    unused_here:        vec2<f32>,
-    game_res:           vec2<f32>,
-    time:               f32,
-    time_delta:         f32,
-    unused:             vec2<f32>
-};
+// struct Constants {
+//     game_res:           vec2<f32>,
+//     time:               f32,
+//     time_delta:         f32,
+// };
 struct CameraUniform {
-    view_proj: mat4x4<f32>,
+    view_proj:          mat4x4<f32>,
 };
+struct LightData {
+    view_proj:          mat4x4<f32>,
+    position:           vec4<f32>
+};
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) uv: vec2<f32>,
@@ -24,11 +26,16 @@ struct VertexOutput {
     @location(1) uv: vec2<f32>,
     @location(2) nrm: vec3<f32>,
     @location(3) albedo: f32,
+    @location(4) shadow_pos: vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> globals: Globals;
+//@group(0) @binding(0) var<uniform> constants: Constants;
+@group(0) @binding(1) var<uniform> camera: CameraUniform;
+@group(0) @binding(2) var<uniform> light: LightData;
+
 @group(1) @binding(0) var<storage, read> game_input: array<vec2<f32>>;
-@group(2) @binding(0) var<uniform> camera: CameraUniform;
+@group(2) @binding(0) var t_shadow: texture_depth_2d;
+@group(2) @binding(1) var sampler_shadow: sampler_comparison;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
@@ -79,6 +86,12 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.world_pos = pos;
     out.clip_pos = camera.view_proj * vec4(pos, 1.0);
     
+    let pos_from_light = light.view_proj * vec4(out.world_pos, 1.0);
+    out.shadow_pos = vec3(
+        pos_from_light.xy * vec2(0.5, -0.5) + vec2(0.5),
+        pos_from_light.z
+    );
+
     return out;
 }
 
@@ -92,11 +105,13 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_ff: bool ) -> @location(0
     let val = select(1.0 - in.albedo, in.albedo, is_ff);
     let albedo = mix(TEAL, CORAL, val);
 
-    let light_pos = vec3(0.0, 10.0, 100.0);
-    let light_dir = normalize(light_pos - in.world_pos);
+    let light_dir = normalize(light.position.xyz - in.world_pos);
     var diffuse = max(dot(select(in.nrm, -in.nrm, !is_ff), light_dir), 0.0);
 
-    return albedo * diffuse;
+    var shadow = textureSampleCompare(t_shadow, sampler_shadow, in.shadow_pos.xy, in.shadow_pos.z);
+
+    return albedo * max(diffuse * shadow, 0.25);
+    //return vec4(shadow);
 }
 
 fn rotate_x(angle: f32) -> mat3x3<f32>{

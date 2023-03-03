@@ -24,6 +24,7 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
         let (icon_width, icon_height) = icon.dimensions();
         window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))
     }
+    window.set_cursor_visible(false);
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
         backends: Backends::all(),
