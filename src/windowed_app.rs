@@ -1,10 +1,10 @@
 use std::{collections::VecDeque, path::Path};
 
 use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceError, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
-use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
+use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon, dpi::{Size, PhysicalSize}};
 
 use crate::app::{App, AppVariant};
-use renderdoc::*;
+// use renderdoc::*;
 
 pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Result<(), CreateSurfaceError>{
     env_logger::init();
@@ -25,6 +25,11 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
         window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))
     }
     window.set_cursor_visible(false);
+    // let size = PhysicalSize{
+    //     width: 1600,
+    //     height: 800,
+    // };
+    // window.set_inner_size(size);
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
         backends: Backends::all(),
@@ -73,14 +78,14 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
         fps_data.push_back(delta);
         moment = std::time::Instant::now();
         
-        //TODO this isn't fps. redo
-        if latest_fps_print.elapsed().as_secs_f32() > 1.0 {
-            println!(
-                "Avg fps: {}",
-                1.0 / (fps_data.iter().sum::<f32>() / fps_data.len() as f32)
-            );
-            latest_fps_print = std::time::Instant::now();
-        }
+        // TODO this isn't fps. redo
+        // if latest_fps_print.elapsed().as_secs_f32() > 1.0 {
+        //     println!(
+        //         "Avg fps: {}",
+        //         1.0 / (fps_data.iter().sum::<f32>() / fps_data.len() as f32)
+        //     );
+        //     latest_fps_print = std::time::Instant::now();
+        // }
 
         app_instance.tick(delta);
         
@@ -117,14 +122,14 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                             ..
                         } => {
                             match input.virtual_keycode.unwrap() {
-                                VirtualKeyCode::Q => match RenderDoc::<V110>::new().as_mut() {
-                                    Ok(rd) => {
-                                        rd.trigger_capture();
-                                    }
-                                    Err(error) => {
-                                        println!("Unable to connect: {}", error)
-                                    },
-                                },
+                                // VirtualKeyCode::Q => match RenderDoc::<V110>::new().as_mut() {
+                                //     Ok(rd) => {
+                                //         rd.trigger_capture();
+                                //     }
+                                //     Err(error) => {
+                                //         println!("Unable to connect: {}", error)
+                                //     },
+                                // },
                                 _ => ()
                             };
                         },

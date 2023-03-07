@@ -11,15 +11,19 @@ struct VertexInput {
     @location(2) flap_pos: vec2<f32>,
     @builtin(instance_index) instance_id: u32,
 };
+struct Cell {
+  cur_val: f32,
+  next_val: f32,
+};
 
 @group(0) @binding(2) var<uniform> light: LightData;
-@group(1) @binding(0) var<storage, read> game_input: array<vec2<f32>>;
+@group(1) @binding(0) var<storage, read> game_input: array<Cell>;
 
 @vertex
 fn shadow(in: VertexInput) -> @builtin(position) vec4<f32> {
     let cell_index = in.instance_id/3u;
-    let in_val = game_input[cell_index].r;
-    let is_flapping = abs(in_val) > MIN_FLAP_VAL;
+    let cell = game_input[cell_index];
+    let is_flapping = fract(cell.cur_val) != 0.0;
     
     var pos = vec3(in.position.xy * in.flap_scale * .95, 0.0);
     switch (in.instance_id % 3u) {
@@ -32,7 +36,7 @@ fn shadow(in: VertexInput) -> @builtin(position) vec4<f32> {
             break;
         }
         case 2u: {
-            let rotmat = rotate_x(abs(in_val) * 3.141592);
+            let rotmat = rotate_x(abs(fract(cell.cur_val)) * 3.141592);
             pos = pos * rotmat + vec3(in.flap_pos, 0.0001);
             pos *= select(0.0, 1.0, is_flapping);               // degenerate
             break;
