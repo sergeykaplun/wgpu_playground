@@ -140,11 +140,11 @@ impl Camera for ArcballCamera {
         eye = glm::rotate_x_vec3(&eye, self.polar);
         eye = glm::rotate_y_vec3(&eye, self.azimuth);
 
-        // let mat = glm::perspective_fov(self.fov, self.width, self.height, self.znear, self.zfar) * 
-        //                                               glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
+        let mat = glm::perspective_fov(self.fov, self.width, self.height, self.znear, self.zfar) * 
+                                                      glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
         
-        let mat = glm::ortho(-2.0, 2.0, -1.0, 1.0, -1.0, 1.0)
-                                                    * glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
+        //let mat = glm::ortho(-2.0, 2.0, -1.0, 1.0, -1.0, 1.0)
+        //                                            * glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
         
         self.view_proj_mat = mat.into();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.view_proj_mat]));

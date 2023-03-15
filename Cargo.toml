@@ -20,6 +20,8 @@ rand = "0.8.5"
 tobj = { version = "3.2.1", features = [
     "async",
 ]}
+gltf = "1.0.0"
 anyhow = "1.0.69"
 image = { version = "0.24.5", features = ["png"] }
 ncollide2d = "0.33.0"
+base64 = "0.21.0"
