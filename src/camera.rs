@@ -16,7 +16,7 @@ pub struct ArcballCamera {
     zfar: f32,
     speed: f32,
 
-    pub view_proj_mat: [[f32; 4]; 4],
+    //pub view_proj_mat: [[f32; 4]; 4],
     time_in_flight: f32,
 
     camera_buffer: Buffer,
@@ -33,7 +33,8 @@ pub struct ArcballCamera {
 impl ArcballCamera {
     pub fn new(device: &Device, width: f32, height: f32,
                 fov: f32, znear: f32, zfar: f32, speed: f32, dist: f32) -> Self {
-        let arr: [[f32; 4]; 4] = glm::Mat4::identity().into();
+        //let arr: [[f32; 4]; 4] = ;//glm::Mat4::identity().into();
+        let arr = [0.0f32; 20];
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::cast_slice(&[arr]),
@@ -70,7 +71,7 @@ impl ArcballCamera {
             zfar,
             speed,
 
-            view_proj_mat: arr,
+            //view_proj_mat: arr,
             time_in_flight: 0.0,
 
             camera_buffer,
@@ -146,8 +147,11 @@ impl Camera for ArcballCamera {
         //let mat = glm::ortho(-2.0, 2.0, -1.0, 1.0, -1.0, 1.0)
         //                                            * glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
         
-        self.view_proj_mat = mat.into();
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.view_proj_mat]));
+        let mut uniform = Vec::<f32>::new();
+        uniform.extend(mat.iter());
+        uniform.extend(eye.iter());
+        uniform.push(1.0);
+        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&uniform));
 
         self.time_in_flight += time_delta;
     }
