@@ -1,12 +1,12 @@
 use std::{collections::VecDeque, path::Path};
 
-use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, CreateSurfaceError, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
-use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon, dpi::{Size, PhysicalSize}};
+use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
+use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
 
-use crate::app::{App, AppVariant};
+use crate::{app::{App, AppVariant}, assets_helper::DesktopResourceManager, input_event::InputEvent};
 // use renderdoc::*;
 
-pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Result<(), CreateSurfaceError>{
+pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_variant: AppVariant) {
     env_logger::init();
     
     let event_loop = EventLoop::new();
@@ -24,18 +24,13 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
         let (icon_width, icon_height) = icon.dimensions();
         window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))
     }
-    window.set_cursor_visible(false);
-    // let size = PhysicalSize{
-    //     width: 1600,
-    //     height: 800,
-    // };
-    // window.set_inner_size(size);
+    
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
         backends: Backends::all(),
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
-    let surface = unsafe{ instance.create_surface(&window)? };
+    let surface = unsafe{ instance.create_surface(&window).ok().unwrap() };
     let adapter = instance.request_adapter(&RequestAdapterOptions{
         power_preference: wgpu::PowerPreference::HighPerformance,
         force_fallback_adapter: false,
@@ -61,12 +56,12 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
         view_formats: vec![caps.formats[0]]
     };
     surface.configure(&device, &surface_config);    
-    let mut app_instance = T::new(&surface_config, &device, queue, app_variant.shader_type);
+    let mut app_instance = T::new(&surface_config, &device, queue, app_variant.shader_type, &DesktopResourceManager{});
 
     let mut moment = std::time::Instant::now();
     let mut fps_data = VecDeque::new();
-    let mut latest_fps_print = std::time::Instant::now();
-
+    //let mut latest_fps_print = std::time::Instant::now();
+    let mut input_event = InputEvent::default();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
 
@@ -95,8 +90,8 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                if !app_instance.process_input(event)
-                {
+                let new_event = InputEvent::from_winit_event(event);
+                if !app_instance.process_input(&InputEvent::diff(&input_event, &new_event)) {
                     match event {
                         WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
                             input:
@@ -117,25 +112,10 @@ pub async fn run<T: App + 'static>(title: &str, app_variant: AppVariant) -> Resu
                         WindowEvent::ScaleFactorChanged { .. } => {
                             app_instance.resize(&surface_config, &device);
                         },
-                        WindowEvent::KeyboardInput {
-                            input,
-                            ..
-                        } => {
-                            match input.virtual_keycode.unwrap() {
-                                // VirtualKeyCode::Q => match RenderDoc::<V110>::new().as_mut() {
-                                //     Ok(rd) => {
-                                //         rd.trigger_capture();
-                                //     }
-                                //     Err(error) => {
-                                //         println!("Unable to connect: {}", error)
-                                //     },
-                                // },
-                                _ => ()
-                            };
-                        },
                         _ => {}
                     }
                 }
+                input_event = new_event;
             }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 match app_instance.render(&surface, &device) {

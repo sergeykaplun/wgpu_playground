@@ -1,2 +1,3 @@
 dxc.exe .\src\shaders\hlsl\fullscreen_tri.hlsl -T vs_6_0 -E "vs_main" -Fo .\src\shaders\spirv\fullscreen_tri_vs.spirv
 glslc.exe .\src\shaders\glsl\fullscreen_tri.vert -o .\src\shaders\spirv\fullscreen_tri_vs.spv
+cargo so b --lib --target aarch64-linux-android --release

@@ -1,9 +1,8 @@
 use std::{iter, mem};
 
 use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, RenderPipelineDescriptor, Sampler, BindGroup, Buffer, BindGroupLayout, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingType, BindGroupEntry};
-use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, assets_helper::{self, Mesh}, camera::{ArcballCamera, Camera}};
+use crate::{app::{App, ShaderType}, assets_helper::{Mesh, ResourceManager}, camera::{ArcballCamera, Camera}, input_event::InputEvent};
 struct Renderer {
     queue: Queue,
     
@@ -30,19 +29,15 @@ const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SHADOW_TEX_SIZE: u32 = 512u32;
 
 
-impl App for ShadowMappingExample {
+impl<T: ResourceManager> App<T> for ShadowMappingExample {
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: wgpu::Queue,
-        shader_type: ShaderType
+        shader_type: ShaderType,
+        resource_manager: &T
     ) -> Self {
-        let meshes = pollster::block_on(
-            assets_helper::load_model(
-                "human_floor.obj",
-                &device,
-            )
-        ).expect("Error while loading model");
+        let meshes = resource_manager.load_obj_model("human_floor.obj", &device).ok().unwrap();
 
         let (light_bind_group_layout, light_bind_group, light_buffer) = {
             let light_uniform_size = mem::size_of::<LightData>() as wgpu::BufferAddress;
@@ -171,8 +166,9 @@ impl App for ShadowMappingExample {
         Ok(())
     }
 
-    fn process_input(&mut self, event: &WindowEvent) -> bool {
-        self.camera.input(event)
+    fn process_input(&mut self, event: &InputEvent) -> bool {
+        self.camera.input(event);
+        false
     }
 
     fn tick(&mut self, delta: f32) {

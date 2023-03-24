@@ -1,9 +1,9 @@
 use std::{iter, mem};
 
-use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, RenderPipelineDescriptor, Sampler, BindGroup, Buffer, BindGroupLayout, BindGroupDescriptor, BindGroupLayoutDescriptor, BindingType, BindGroupEntry, PushConstantRange, ShaderStages, Features};
-use winit::event::WindowEvent;
+use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout};
+//use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL}};
+use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent};
 struct Renderer {
     queue: Queue,
     
@@ -23,20 +23,15 @@ pub struct GLTFViewerExample {
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 
-impl App for GLTFViewerExample {
+impl<T: ResourceManager> App<T> for GLTFViewerExample {
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: wgpu::Queue,
-        shader_type: ShaderType
+        shader_type: ShaderType,
+        resource_manager: &T
     ) -> Self {
-        let model = pollster::block_on(
-            GLTFModel::new(
-                "models/FlightHelmet/glTF/FlightHelmet.gltf",
-                &device,
-                &queue
-            )
-        );
+        let model = pollster::block_on(parse_gltf("models/FlightHelmet/glTF/FlightHelmet.gltf", &device, &queue, resource_manager));
 
         let (light_bind_group_layout, light_bind_group, light_buffer) = {
             let light_uniform_size = mem::size_of::<LightData>() as wgpu::BufferAddress;
@@ -77,11 +72,12 @@ impl App for GLTFViewerExample {
         let pipeline = Self::create_output_pipeline(&device, sc.format, &light_bind_group_layout, shader_type);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer };
-        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 5.);
+        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 1.);
         Self{ renderer, model, camera, time_in_flight: 0.0 }
     }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
+        self.camera.tick(0.01, &self.renderer.queue);
         let light_data = Self::get_light_matrix(self.time_in_flight);
         self.renderer.queue.write_buffer(&self.renderer.light_buffer, 0, bytemuck::cast_slice(&[light_data]));
         
@@ -105,7 +101,7 @@ impl App for GLTFViewerExample {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: 0.1,
                             g: 0.1,
-                            b: 0.1,
+                            b: 0.2,
                             a: 1.0,
                         }),
                         store: true,
@@ -133,8 +129,9 @@ impl App for GLTFViewerExample {
         Ok(())
     }
 
-    fn process_input(&mut self, event: &WindowEvent) -> bool {
-        self.camera.input(event)
+    fn process_input(&mut self, event: &InputEvent) -> bool {
+        self.camera.input(event);
+        false
     }
 
     fn tick(&mut self, delta: f32) {

@@ -1,9 +1,8 @@
 use std::{iter, mem};
 use image::GenericImageView;
 use wgpu::{Queue, RenderPipeline, ColorTargetState, TextureFormat, ShaderModule, VertexState, FragmentState, Device, ShaderModuleDescriptor, PipelineLayoutDescriptor, PrimitiveState, MultisampleState, TextureView, BindGroupEntry, BindGroupDescriptor, BindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, util::{BufferInitDescriptor, DeviceExt}, BufferUsages, Buffer, VertexBufferLayout, VertexAttribute, BufferDescriptor, BindGroupLayout, RenderPassDepthStencilAttachment, Operations, DepthStencilState, StencilState, DepthBiasState, RenderPipelineDescriptor, Sampler, BindingType};
-use winit::event::WindowEvent;
 
-use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, assets_helper::{Mesh, self}};
+use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, assets_helper::{Mesh, ResourceManager}, input_event::InputEvent};
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -33,12 +32,13 @@ pub(crate) struct FlipboardExample {
     arkanoid: arkanoid::Arkanoid,
 }
 
-impl App for FlipboardExample {
+impl<T: ResourceManager> App<T> for FlipboardExample {
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: wgpu::Queue,
-        shader_type: crate::app::ShaderType
+        shader_type: crate::app::ShaderType,
+        resource_manager: &T
     ) -> Self {
         let arkanoid = arkanoid::Arkanoid::new(device);
         let arkanoid_gamedata = arkanoid.get_bind_group(0);
@@ -135,12 +135,7 @@ impl App for FlipboardExample {
             ],
         });
         
-        let meshes = pollster::block_on(
-            assets_helper::load_model(
-                "111.obj",
-                &device,
-            )
-        ).expect("Error while loading model");
+        let meshes = resource_manager.load_obj_model("111.obj", &device).ok().unwrap();
         
         let renderer = Renderer {
             queue,
@@ -264,8 +259,9 @@ impl App for FlipboardExample {
         self.globals.time_delta += delta;// * 0.1;
     }
 
-    fn process_input(&mut self, event: &WindowEvent) -> bool {
-        self.arkanoid.input(event);
+    fn process_input(&mut self, event: &InputEvent) -> bool {
+        // TODO re-enable
+        //self.arkanoid.input(event);
         //self.camera.input(event)
         false
     }

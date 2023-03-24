@@ -1,9 +1,11 @@
-use wgpu::{Queue, Features};
-use structopt::StructOpt;
-use winit::event::WindowEvent;
 use std::str::FromStr;
+use structopt::StructOpt;
+use wgpu::{Features, Queue};
 
-pub trait App {
+use crate::input_event::InputEvent;
+use crate::assets_helper::ResourceManager;
+
+pub trait App<T: ResourceManager> {
     fn get_extra_device_features(app_variant: AppVariant) -> Features {
         match app_variant.shader_type {
             ShaderType::WGSL => Features::empty(),
@@ -14,14 +16,21 @@ pub trait App {
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: Queue,
-        shader_type: ShaderType
+        shader_type: ShaderType,
+        resource_manager: &T
     ) -> Self;
-    fn process_input(&mut self, _event: &WindowEvent) -> bool {
+
+    fn process_input(&mut self, _event: &InputEvent) -> bool {
         false
     }
-    fn resize(&mut self, _sc: &wgpu::SurfaceConfiguration, _device: &wgpu::Device){}
-    fn tick(&mut self, _delta: f32){}
-    fn render(&mut self, frame: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError>;
+
+    fn resize(&mut self, _sc: &wgpu::SurfaceConfiguration, _device: &wgpu::Device) {}
+    fn tick(&mut self, _delta: f32) {}
+    fn render(
+        &mut self,
+        frame: &wgpu::Surface,
+        device: &wgpu::Device,
+    ) -> Result<(), wgpu::SurfaceError>;
 }
 
 #[derive(StructOpt, Debug, Clone, Copy)]
@@ -34,7 +43,7 @@ pub struct AppVariant {
 #[derive(Debug, Copy, Clone)]
 pub enum ShaderType {
     WGSL,
-    SPIRV
+    SPIRV,
 }
 
 type ParseError = &'static str;

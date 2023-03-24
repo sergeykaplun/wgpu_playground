@@ -3,7 +3,6 @@ use std::{cell::Cell, mem};
 use glm::{Vec2, UVec2, distance};
 use ncollide2d::{shape::{ShapeHandle, Plane, Ball, Cuboid}, na::{Vector2, Isometry2, self}, pipeline::{CollisionGroups, GeometricQueryType, CollisionObjectSlabHandle, ContactEvent}, world::CollisionWorld};
 use wgpu::{Buffer, Device, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, BindGroupLayoutEntry, BindGroupEntry, Queue};
-use winit::event::{WindowEvent, VirtualKeyCode, ElementState};
 
 use super::FlapPad;
 
@@ -228,41 +227,42 @@ impl Arkanoid {
         queue.write_buffer(&self.gamedata_buffer, 0, bytemuck::cast_slice(&self.output_cells));
     }
 
-    pub fn input(&mut self, event: &WindowEvent) {
-        match event {
-            WindowEvent::KeyboardInput {
-                input,
-                ..
-            } => {
-                match self.game_state {
-                    GameState::Ended => {
-                        if input.virtual_keycode.unwrap() == VirtualKeyCode::Space &&
-                           input.state ==  ElementState::Released {
-                            self.clear();
-                            self.game_state = GameState::Running;
-                        }
-                    },
-                    GameState::Running => {
-                        let index = match input.virtual_keycode.unwrap() {
-                            VirtualKeyCode::A | VirtualKeyCode::Left => Some(Self::LEFT),
-                            VirtualKeyCode::D | VirtualKeyCode::Right => Some(Self::RIGHT),
-                            _ => None
-                        };
-                        if let Some(ind) = index {
-                            self.directions_pressed[ind] = input.state == ElementState::Pressed;
-                        }
-                    },
-                    GameState::Ready => {
-                        if input.virtual_keycode.unwrap() == VirtualKeyCode::Space &&
-                           input.state ==  ElementState::Released{
-                            self.game_state = GameState::Running;
-                        }
-                    },
-                };
-            },
-            _ => {}
-        }
-    }
+    // TODO re-enable
+    // pub fn input(&mut self, event: &WindowEvent) {
+    //     match event {
+    //         WindowEvent::KeyboardInput {
+    //             input,
+    //             ..
+    //         } => {
+    //             match self.game_state {
+    //                 GameState::Ended => {
+    //                     if input.virtual_keycode.unwrap() == VirtualKeyCode::Space &&
+    //                        input.state ==  ElementState::Released {
+    //                         self.clear();
+    //                         self.game_state = GameState::Running;
+    //                     }
+    //                 },
+    //                 GameState::Running => {
+    //                     let index = match input.virtual_keycode.unwrap() {
+    //                         VirtualKeyCode::A | VirtualKeyCode::Left => Some(Self::LEFT),
+    //                         VirtualKeyCode::D | VirtualKeyCode::Right => Some(Self::RIGHT),
+    //                         _ => None
+    //                     };
+    //                     if let Some(ind) = index {
+    //                         self.directions_pressed[ind] = input.state == ElementState::Pressed;
+    //                     }
+    //                 },
+    //                 GameState::Ready => {
+    //                     if input.virtual_keycode.unwrap() == VirtualKeyCode::Space &&
+    //                        input.state ==  ElementState::Released{
+    //                         self.game_state = GameState::Running;
+    //                     }
+    //                 },
+    //             };
+    //         },
+    //         _ => {}
+    //     }
+    // }
 
     fn clear(&mut self) {
         for cur_cell in self.output_cells.chunks_mut(2) {

@@ -5,7 +5,7 @@ use gltf::Gltf;
 use image::GenericImageView;
 use wgpu::{util::{DeviceExt, BufferInitDescriptor}, BufferUsages, Device, Queue, BindGroup, BindGroupDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, BindGroupEntry};
 
-use crate::assets_helper::{load_string, load_binary};
+use crate::assets_helper::ResourceManager;
 
 pub const NOD_MM_BGL:  BindGroupLayoutDescriptor = BindGroupLayoutDescriptor{
     label: Some("mm_bgl"),
@@ -107,24 +107,7 @@ pub struct GLTFModel {
 }
 
 impl GLTFModel {
-    pub async fn new(file_name: &str, device: &wgpu::Device, queue: &Queue) -> GLTFModel {
-        let gltf_text = load_string(file_name).await.ok().unwrap();
-        let gltf_cursor = Cursor::new(gltf_text);
-        let gltf_reader = BufReader::new(gltf_cursor);
-        let gltf = Gltf::from_reader(gltf_reader).ok().unwrap();
-        let textures = Self::load_images(&gltf, device, queue).await;
-        let materials = Self::load_materials(&gltf);
-        let mut buffer_data = Vec::new();
-        for buffer in gltf.buffers() {
-            match buffer.source() {
-                gltf::buffer::Source::Uri(uri) => {
-                    let new_uri = format!("{}{}", "models/FlightHelmet/glTF/", uri);
-                    let bin = load_binary(&new_uri).await.unwrap();
-                    buffer_data.push(bin);
-                },
-                _ => panic!("AAAAAAA")
-            }
-        }
+    fn new(device: &Device, gltf: Gltf, materials: Vec<Material>, textures: Vec<Option<BindGroup>>, buffer_data: Vec<Vec<u8>>) -> GLTFModel {
         let mut index_buffer = Vec::new();
         let mut vertex_buffer = Vec::new();
         let mut nodes = Vec::<Node>::new();
@@ -157,7 +140,6 @@ impl GLTFModel {
             })
         }).collect();
 
-        //let indices_cnt = index_buffer.len() as u32;
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor{
             label: Some("Gltf vertex data"),
             contents: bytemuck::cast_slice(&vertex_buffer),
@@ -245,107 +227,6 @@ impl GLTFModel {
             }
         }
     }
-
-    async fn load_images(gltf: &Gltf, device: &Device, queue: &Queue) -> Vec<Option<BindGroup>> {
-        let mut res = Vec::new();
-        for cur_tex in gltf.textures() {
-            let start = std::time::Instant::now();
-            let cur_image = match cur_tex.source().source() {
-                gltf::image::Source::Uri { uri, .. } => {
-                    if !uri.contains("baseColor") {
-                        res.push(None);
-                        continue;
-                    }
-                    let new_uri = format!("{}{}", "models/FlightHelmet/glTF/", uri);
-                    let data = load_binary(&new_uri).await.unwrap();
-                    let img = image::load_from_memory(&data).unwrap();
-
-                    let duration = start.elapsed().as_secs_f32();
-                    println!("Texture load: read image {}: {}", uri, duration);
-                    img
-                },
-                _ => panic!("AAAAAAAAAAAAAA")
-            };
-            
-
-            let cur_rgba = cur_image.to_rgba8();
-            let (cur_width, cur_height) = cur_image.dimensions();
-
-            let cur_size = wgpu::Extent3d {
-                width: cur_width,
-                height: cur_height,
-                depth_or_array_layers: 1,
-            };
-            let cur_texture = device.create_texture(
-                &wgpu::TextureDescriptor {
-                    size: cur_size,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    label: Some("font atlas texture"),
-                    view_formats: &[],
-                }
-            );
-            queue.write_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &cur_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &cur_rgba,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: std::num::NonZeroU32::new(4 * cur_width),
-                    rows_per_image: std::num::NonZeroU32::new(cur_height),
-                },
-                cur_size,
-            );
-
-            let cur_texture_view = cur_texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let cur_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
-                ..Default::default()
-            });
-
-            let bg = device.create_bind_group(&BindGroupDescriptor{
-                label: Some(&format!("bg for {}", cur_tex.name().unwrap_or("noname"))),
-                layout: &device.create_bind_group_layout(&MATERIAL_BGL),
-                entries: &[
-                    BindGroupEntry{
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&cur_texture_view),
-                    },
-                    BindGroupEntry{
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&cur_sampler),
-                    },
-                ],
-            });
-
-            res.push(Some(bg));
-        }
-        res
-    }
-
-    fn load_materials(gltf: &Gltf) -> Vec<Material> {
-        gltf.materials().map(|cur_material| {
-            Material{
-                _base_color_factor: cur_material.pbr_metallic_roughness().base_color_factor(),
-                base_color_texture_index: match cur_material.pbr_metallic_roughness().base_color_texture() {
-                    Some(tex) => tex.texture().index() as u32,
-                    None => 0,
-                },
-            }
-        }).collect()
-    }
 }
 
 pub(crate) trait Drawable<'a> {
@@ -378,5 +259,110 @@ impl<'a, 'b> Drawable<'b> for wgpu::RenderPass<'a> where 'b: 'a, {
             }
         }
     }
+}
+
+pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Device, queue: &Queue, resource_manager: &T) -> GLTFModel {
+    let gltf_text = resource_manager.load_string(file_name).ok().unwrap();
+    let gltf_cursor = Cursor::new(gltf_text);
+    let gltf_reader = BufReader::new(gltf_cursor);
+    let gltf = Gltf::from_reader(gltf_reader).ok().unwrap();
+    let textures = gltf.textures().map(|cur_tex| {
+        let cur_image = match cur_tex.source().source() {
+            gltf::image::Source::Uri { uri, .. } => {
+                if !uri.contains("baseColor") {
+                    return None
+                }
+                let new_uri = format!("{}{}", "models/FlightHelmet/glTF/", uri);
+                let data = resource_manager.load_binary(&new_uri).unwrap();
+                image::load_from_memory(&data).unwrap()
+            },
+            _ => panic!("AAAAAAAAAAAAAA")
+        };
+        
+
+        let cur_rgba = cur_image.to_rgba8();
+        let (cur_width, cur_height) = cur_image.dimensions();
+
+        let cur_size = wgpu::Extent3d {
+            width: cur_width,
+            height: cur_height,
+            depth_or_array_layers: 1,
+        };
+        let cur_texture = device.create_texture(
+            &wgpu::TextureDescriptor {
+                size: cur_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                label: Some("font atlas texture"),
+                view_formats: &[],
+            }
+        );
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &cur_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &cur_rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * cur_width),
+                rows_per_image: std::num::NonZeroU32::new(cur_height),
+            },
+            cur_size,
+        );
+
+        let cur_texture_view = cur_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let cur_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Some(device.create_bind_group(&BindGroupDescriptor{
+            label: Some(&format!("bg for {}", cur_tex.name().unwrap_or("noname"))),
+            layout: &device.create_bind_group_layout(&MATERIAL_BGL),
+            entries: &[
+                BindGroupEntry{
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&cur_texture_view),
+                },
+                BindGroupEntry{
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&cur_sampler),
+                },
+            ],
+        }))
+    }).collect();
+    let materials = gltf.materials().map(|cur_material| {
+        Material{
+            _base_color_factor: cur_material.pbr_metallic_roughness().base_color_factor(),
+            base_color_texture_index: match cur_material.pbr_metallic_roughness().base_color_texture() {
+                Some(tex) => tex.texture().index() as u32,
+                None => 0,
+            },
+        }
+    }).collect();
+    let mut buffer_data = Vec::new();
+    for buffer in gltf.buffers() {
+        match buffer.source() {
+            gltf::buffer::Source::Uri(uri) => {
+                let new_uri = format!("{}{}", "models/FlightHelmet/glTF/", uri);
+                let bin = resource_manager.load_binary(&new_uri).unwrap();
+                buffer_data.push(bin);
+            },
+            _ => panic!("AAAAAAA")
+        }
+    }
+
+    GLTFModel::new(device, gltf, materials, textures, buffer_data)
 }
 

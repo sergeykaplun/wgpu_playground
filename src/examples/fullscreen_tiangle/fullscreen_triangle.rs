@@ -1,6 +1,6 @@
 use std::iter;
 use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, Queue, include_spirv_raw, ShaderModule, ShaderModuleDescriptor, ShaderStages, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindGroupEntry, util::DeviceExt, BindGroupDescriptor, BindGroup, Buffer, VertexState};
-use crate::{app::App, app::ShaderType};
+use crate::{app::App, app::ShaderType, assets_helper::ResourceManager};
 
 pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
@@ -14,12 +14,13 @@ pub struct FullscreenTriangleExample {
     resolution : Option<[u32; 2]>
 }
 
-impl App for FullscreenTriangleExample{
+impl<T: ResourceManager> App<T> for FullscreenTriangleExample{
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: Queue,
-        shader_type: ShaderType
+        shader_type: ShaderType,
+        _: &T
     ) -> Self {
         let binding_0 = device.create_bind_group_layout(&BindGroupLayoutDescriptor{
             label: Some("Fullscreen tri layout"),

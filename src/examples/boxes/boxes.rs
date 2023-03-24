@@ -2,9 +2,8 @@ use std::iter;
 
 use rand::{distributions::Uniform, prelude::Distribution};
 use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup, ComputePipelineDescriptor, PipelineLayoutDescriptor, ComputePipeline, Features, BufferDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages};
-use winit::event::{WindowEvent, ElementState, VirtualKeyCode};
 
-use crate::{app::{App, ShaderType, AppVariant}, camera::{ArcballCamera, Camera}};
+use crate::{app::{App, ShaderType, AppVariant}, camera::{ArcballCamera, Camera}, assets_helper::ResourceManager, input_event::InputEvent};
 
 static CUBE_DATA: &'static [f32] = &[
     // front
@@ -102,11 +101,10 @@ pub struct BoxesExample {
     renderer: Renderer,
     camera: ArcballCamera,
     constants: GlobalConstants,
-    //time_in_flight: f32,
     light_controller: LightController,
 }
 
-impl App for BoxesExample {
+impl <T: ResourceManager> App<T> for BoxesExample {
     fn get_extra_device_features(app_variant: AppVariant) -> Features {
         let mut features = match app_variant.shader_type {
             ShaderType::WGSL => Features::empty(),
@@ -120,7 +118,8 @@ impl App for BoxesExample {
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
         queue: wgpu::Queue,
-        shader_type: ShaderType
+        shader_type: ShaderType,
+        _ : &T
     ) -> Self {
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
@@ -274,8 +273,7 @@ impl App for BoxesExample {
 
                 shadow_compute_pipeline,
                 shadow_bind_group,
-                //shadow_uniform_buf,
-                work_group_count: SHADOW_TEX_SIZE/SHADOW_WORKGROUP_SIZE + 1, // div_ceil
+                work_group_count: SHADOW_TEX_SIZE/SHADOW_WORKGROUP_SIZE + 1,
 
                 global_constants_buffer,
                 global_constants_bind_group
@@ -370,9 +368,11 @@ impl App for BoxesExample {
         Ok(())
     }
 
-    fn process_input(&mut self, event: &WindowEvent) -> bool {
-        self.light_controller.input(event);
-        self.camera.input(event)
+    fn process_input(&mut self, event: &InputEvent) -> bool {
+        // TODO re-enable
+        //self.light_controller.input(event);
+        self.camera.input(event);
+        false
     }
 
     fn tick(&mut self, delta: f32) {
@@ -739,26 +739,27 @@ impl LightController {
         }
     }
 
-    fn input(&mut self, event: &WindowEvent) {
-        match event {
-            WindowEvent::KeyboardInput {
-                input,
-                ..
-            } => {
-                let index = match input.virtual_keycode.unwrap() {
-                    VirtualKeyCode::A | VirtualKeyCode::Left => Some(Self::LEFT),
-                    VirtualKeyCode::W | VirtualKeyCode::Up => Some(Self::UP),
-                    VirtualKeyCode::D | VirtualKeyCode::Right => Some(Self::RIGHT),
-                    VirtualKeyCode::S | VirtualKeyCode::Down => Some(Self::DOWN),
-                    _ => None
-                };
-                if let Some(ind) = index {
-                    self.directions_pressed[ind] = input.state == ElementState::Pressed;
-                }
-            },
-            _ => {}
-        }
-    }
+    // TODO re-enable
+    // fn input(&mut self, event: &WindowEvent) {
+    //     match event {
+    //         WindowEvent::KeyboardInput {
+    //             input,
+    //             ..
+    //         } => {
+    //             let index = match input.virtual_keycode.unwrap() {
+    //                 VirtualKeyCode::A | VirtualKeyCode::Left => Some(Self::LEFT),
+    //                 VirtualKeyCode::W | VirtualKeyCode::Up => Some(Self::UP),
+    //                 VirtualKeyCode::D | VirtualKeyCode::Right => Some(Self::RIGHT),
+    //                 VirtualKeyCode::S | VirtualKeyCode::Down => Some(Self::DOWN),
+    //                 _ => None
+    //             };
+    //             if let Some(ind) = index {
+    //                 self.directions_pressed[ind] = input.state == ElementState::Pressed;
+    //             }
+    //         },
+    //         _ => {}
+    //     }
+    // }
 
     fn tick(&mut self, time_delta: f32) {
         if self.directions_pressed[Self::LEFT] {
