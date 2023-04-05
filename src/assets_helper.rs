@@ -1,4 +1,5 @@
 use std::io::{Cursor, BufReader};
+use anyhow::bail;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -23,6 +24,14 @@ pub struct Model {
 pub trait ResourceManager {
     fn load_string(&self, file_name: &str) -> anyhow::Result<String>;
     fn load_binary(&self, file_name: &str) -> anyhow::Result<Vec<u8>>;
+    fn load_base64(&self, data: &str) -> anyhow::Result<Vec<u8>> {
+        //let sss: String = data.replace("data:image/jpeg;base64,", "").trim().into();
+        let sss = data.split("base64,").nth(1).unwrap().trim();
+        match base64::decode(sss) {
+            Ok(data) => Ok(data),
+            Err(error) => bail!("Failed to decode Base64 data"),
+        }
+    }
     fn load_obj_model(&self, file_name: &str, device: &wgpu::Device) -> anyhow::Result<Vec<Mesh>>;
 }
 

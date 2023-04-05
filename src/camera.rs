@@ -1,7 +1,7 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, mem};
 
-use wgpu::{Buffer, BindGroup, Device, util::DeviceExt, Queue, BindGroupLayoutEntry, BindGroupEntry};
-use crate::input_event::InputEvent;
+use wgpu::{Buffer, BindGroup, Device, util::DeviceExt, Queue, BindGroupLayoutEntry, BindGroupEntry, BufferUsages, BufferDescriptor};
+use crate::input_event::{InputEvent, EventType};
 
 pub trait Camera {
     fn input(&mut self, event: &InputEvent);
@@ -27,17 +27,18 @@ pub struct ArcballCamera {
 impl ArcballCamera {
     pub fn new(device: &Device, width: f32, height: f32,
                 fov: f32, znear: f32, zfar: f32, speed: f32, dist: f32) -> Self {
-        let arr = [0.0f32; 20];
+        let arr = [0.0f32; 64];
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::cast_slice(&[arr]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+        
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -96,7 +97,7 @@ impl ArcballCamera {
 impl Camera for ArcballCamera {
     fn input(&mut self, event: &InputEvent) {
         match &event.event_type {
-            Move => {
+            EventType::Move => {
                 self.azimuth -= event.coords[0] / self.width * self.speed;
                 self.polar   -= event.coords[1] / self.height * self.speed;
                 self.polar = self.polar.clamp(-PI * 0.35, PI * 0.35);
@@ -110,14 +111,26 @@ impl Camera for ArcballCamera {
         eye = glm::rotate_x_vec3(&eye, self.polar);
         eye = glm::rotate_y_vec3(&eye, self.azimuth);
 
-        let mat = glm::perspective_fov(self.fov, self.width, self.height, self.znear, self.zfar) * 
-                                                      glm::look_at(&eye, &glm::vec3::<f32>(0., -0.125, 0.), &glm::vec3::<f32>(0., 1., 0.));
+        let proj = glm::perspective_fov(self.fov, self.width, self.height, self.znear, self.zfar);
+        let view = glm::look_at(&eye, &glm::vec3::<f32>(0., -0.125, 0.), &glm::vec3::<f32>(0., 1., 0.));
+        // let mat = glm::perspective_fov(self.fov, self.width, self.height, self.znear, self.zfar) * 
+        //                                               glm::look_at(&eye, &glm::vec3::<f32>(0., -0.125, 0.), &glm::vec3::<f32>(0., 1., 0.));
         
         //let mat = glm::ortho(-2.0, 2.0, -1.0, 1.0, -1.0, 1.0)
         //                                            * glm::look_at(&eye, &glm::Vec3::zeros(), &glm::vec3::<f32>(0., 1., 0.));
         
+        // struct CameraParams {
+        //     projection :                      mat4x4<f32>,
+        //     model :                           mat4x4<f32>,
+        //     view :                            mat4x4<f32>,
+        //     position :                        vec3<f32>,
+        //   };
+        
         let mut uniform = Vec::<f32>::new();
-        uniform.extend(mat.iter());
+        uniform.extend(proj.iter());
+        uniform.extend(glm::Mat4::identity().iter());
+        uniform.extend(view.iter());
+        // uniform.extend(mat.iter());
         uniform.extend(eye.iter());
         uniform.push(1.0);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&uniform));
