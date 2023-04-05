@@ -1,7 +1,6 @@
 use std::{iter, mem};
 
 use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout};
-//use winit::event::WindowEvent;
 
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent};
 struct Renderer {
@@ -14,7 +13,7 @@ struct Renderer {
     light_bind_group: BindGroup,
 }
 
-pub struct GLTFViewerExample {
+pub struct PBRExample {
     renderer: Renderer,
     model: GLTFModel,
     camera: ArcballCamera,
@@ -23,7 +22,7 @@ pub struct GLTFViewerExample {
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 
-impl<T: ResourceManager> App<T> for GLTFViewerExample {
+impl<T: ResourceManager> App<T> for PBRExample {
     fn new(
         sc: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
@@ -142,116 +141,7 @@ impl<T: ResourceManager> App<T> for GLTFViewerExample {
     }
 }
 
-impl GLTFViewerExample {
-    fn create_output_pipeline(device: &wgpu::Device, tex_format: TextureFormat, light_bind_group_layout: &BindGroupLayout, /*shadow_tex_view: &TextureView, shadow_sampler: &Sampler,*/ shader_type: ShaderType) -> wgpu::RenderPipeline {
-        let buffer_layout = 
-        [
-            VertexBufferLayout{
-                array_stride: std::mem::size_of::<[f32; 11]>() as wgpu::BufferAddress,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[VertexAttribute{
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 0,
-                    shader_location: 0,
-                },
-                VertexAttribute{
-                    format: wgpu::VertexFormat::Float32x2,
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                },
-                VertexAttribute{
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
-                    shader_location: 2,
-                },
-                VertexAttribute{
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: std::mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 3,
-                }]
-            }
-        ];
-
-        let color_states = [Some(ColorTargetState {
-            format: tex_format,
-            blend: Some(wgpu::BlendState {
-                color: wgpu::BlendComponent::REPLACE,
-                alpha: wgpu::BlendComponent::REPLACE,
-            }),
-            write_mask: wgpu::ColorWrites::ALL,
-        })];
-        let mut spirv_modules : Vec<ShaderModule> = vec![];
-
-        let vertex_state: VertexState;
-        let fragment_state: FragmentState;
-        match shader_type {
-            ShaderType::WGSL => {
-                spirv_modules.push(device.create_shader_module(ShaderModuleDescriptor{
-                    label: Some("WGSL shader"),
-                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/wgsl/geometry.wgsl").into()),
-                }));
-                vertex_state = wgpu::VertexState {
-                    module: &spirv_modules[0],
-                    entry_point: "vs_main",
-                    buffers: &buffer_layout,
-                };
-                fragment_state = FragmentState {
-                    module: &spirv_modules[0],
-                    entry_point: "fs_main",
-                    targets: &color_states
-                }
-            },
-            _ => panic!()
-        }
-        
-        let camera_bind_group_layout = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            label: Some("camera_bind_group_layout"),
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
-                label: Some("Output pipeline layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout, &device.create_bind_group_layout(&NOD_MM_BGL), &device.create_bind_group_layout(&MATERIAL_BGL),],
-                push_constant_ranges: &[],
-            }
-        );
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Output pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: vertex_state,
-            primitive: PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false
-            },
-            depth_stencil: Some(DepthStencilState{
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
-            }),
-            multisample: MultisampleState::default(),
-            fragment: Some(fragment_state),
-            multiview: None,
-        })
-    }
-
+impl PBRExample {
     fn create_pbr_pipeline(device: &wgpu::Device, tex_format: TextureFormat, light_bind_group_layout: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
         let buffer_layout = 
         [

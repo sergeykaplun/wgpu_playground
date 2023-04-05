@@ -10,5 +10,5 @@ mod assets_helper;
 mod model;
 mod input_event;
 
-#[path = "./examples/gltf/gltf_viewer.rs"]
-mod gltf_viewer;
+#[path = "./examples/pbr/pbr.rs"]
+mod pbr;

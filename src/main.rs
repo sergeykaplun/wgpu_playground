@@ -11,11 +11,11 @@ mod input_event;
 
 extern crate nalgebra_glm as glm;
 
-#[path = "./examples/gltf/gltf_viewer.rs"]
-mod gltf_viewer;
-use gltf_viewer::GLTFViewerExample;
+#[path = "./examples/pbr/pbr.rs"]
+mod pbr;
+use pbr::PBRExample;
 
 fn main() {
     let app_variant = AppVariant::from_args();
-    pollster::block_on(run::<GLTFViewerExample>("GLTFViewerExample", app_variant));
+    pollster::block_on(run::<PBRExample>("PBRExample", app_variant));
 }
