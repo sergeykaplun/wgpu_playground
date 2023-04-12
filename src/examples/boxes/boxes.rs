@@ -3,60 +3,7 @@ use std::iter;
 use rand::{distributions::Uniform, prelude::Distribution};
 use wgpu::{PrimitiveState, Face, MultisampleState, FragmentState, ColorTargetState, TextureFormat, VertexBufferLayout, VertexAttribute, util::{DeviceExt, BufferInitDescriptor}, BufferUsages, RenderPipeline, Queue, Buffer, ShaderModuleDescriptor, BindGroupLayout, include_spirv_raw, ShaderModule, VertexState, DepthStencilState, StencilState, DepthBiasState, RenderPassDepthStencilAttachment, Operations, TextureView, Sampler, BindGroupDescriptor, BindGroupEntry, BindGroup, ComputePipelineDescriptor, PipelineLayoutDescriptor, ComputePipeline, Features, BufferDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages};
 
-use crate::{app::{App, ShaderType, AppVariant}, camera::{ArcballCamera, Camera}, assets_helper::ResourceManager, input_event::InputEvent};
-
-static CUBE_DATA: &'static [f32] = &[
-    // front
-    -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-     1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-     1.0,  1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    -1.0,  1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    // back
-    -1.0,  1.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0,
-     1.0,  1.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0,
-     1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0,
-    -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0,
-    // right
-     1.0, -1.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-     1.0,  1.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-     1.0,  1.0,  1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-     1.0, -1.0,  1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-    // left
-    -1.0, -1.0,  1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
-    -1.0,  1.0,  1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
-    -1.0,  1.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
-    -1.0, -1.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,
-    // top
-     1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-    -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-    -1.0, 1.0,  1.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-     1.0, 1.0,  1.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-    // bottom
-     1.0, -1.0,  1.0, 0.0, 0.0, 0.0, -1.0, 0.0,
-    -1.0, -1.0,  1.0, 0.0, 0.0, 0.0, -1.0, 0.0,
-    -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0,
-     1.0, -1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0,
-];
-
-static CUBE_INDICES: &[u16] = &[
-    0, 1, 2, 2, 3, 0,
-    4, 5, 6, 6, 7, 4,
-    8, 9, 10, 10, 11, 8,
-    12, 13, 14, 14, 15, 12,
-    16, 17, 18, 18, 19, 16,
-    20, 21, 22, 22, 23, 20,
-];
-
-static FLOOR_DATA: &'static [f32] = &[
-    -20.0, -1.0, -20.0, 0.0, 0.0,
-    -20.0, -1.0,  20.0, 0.0, 1.0, 
-     20.0, -1.0,  20.0, 1.0, 1.0,
-     20.0, -1.0, -20.0, 1.0, 0.0,
-];
-
-static FLOOR_INDICES: &[u16] = &[
-    0, 1, 2, 2, 3, 0,
-];
+use crate::{app::{App, ShaderType, AppVariant}, camera::{ArcballCamera, Camera}, assets_helper::ResourceManager, input_event::InputEvent, geometry_primitives::{CUBE_DATA, CUBE_INDICES, FLOOR_DATA, FLOOR_INDICES}};
 
 const SHADOW_TEX_SIZE: u32 = 1024u32;
 const SHADOW_WORKGROUP_SIZE: u32 = 16u32;
