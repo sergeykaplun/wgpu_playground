@@ -38,7 +38,26 @@ impl InputEvent {
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn from_winit_event(event: &WindowEvent) -> InputEvent {
+        // match event {
+        //     WindowEvent::CursorMoved { position, .. } =>
+        //         InputEvent{ event_type:  EventType::Move, coords: [position.x as f32, position.y as f32] },
+        //     _ => InputEvent::default()
+        // }
+
+        use winit::event::ElementState;
+
         match event {
+            WindowEvent::MouseInput { button, state, .. } => {
+                match state {
+                    ElementState::Pressed => {
+                        InputEvent{ event_type: EventType::Start, coords: [0.0, 0.0] }
+                    },
+                    ElementState::Released => {
+                        InputEvent{ event_type: EventType::End, coords: [0.0, 0.0] }
+                    },
+                }
+            },
+                
             WindowEvent::CursorMoved { position, .. } =>
                 InputEvent{ event_type:  EventType::Move, coords: [position.x as f32, position.y as f32] },
             _ => InputEvent::default()

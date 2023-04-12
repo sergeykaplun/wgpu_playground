@@ -181,6 +181,7 @@ impl Skybox {
             dimension: Some(wgpu::TextureViewDimension::Cube),
             ..wgpu::TextureViewDescriptor::default()
         });
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,

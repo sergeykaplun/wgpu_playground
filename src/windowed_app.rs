@@ -4,7 +4,7 @@ use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, Limits, DeviceDe
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
 
 use crate::{app::{App, AppVariant}, assets_helper::DesktopResourceManager, input_event::InputEvent};
-// use renderdoc::*;
+use renderdoc::*;
 
 pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_variant: AppVariant) {
     env_logger::init();
@@ -28,6 +28,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
         backends: Backends::all(),
+        //backends: Backends::DX12,
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
     let surface = unsafe{ instance.create_surface(&window).ok().unwrap() };
@@ -55,7 +56,13 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
         alpha_mode: caps.alpha_modes[0], 
         view_formats: vec![caps.formats[0]]
     };
-    surface.configure(&device, &surface_config);    
+    surface.configure(&device, &surface_config);
+
+    // let mut imgui = Context::create();
+    // let mut imgui_winit = WinitPlatform::init(&mut imgui);
+    // imgui_winit.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
+
+
     let mut app_instance = T::new(&surface_config, &device, queue, app_variant.shader_type, &DesktopResourceManager{});
 
     let mut moment = std::time::Instant::now();
@@ -91,7 +98,8 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
                 window_id,
             } if window_id == window.id() => {
                 let new_event = InputEvent::from_winit_event(event);
-                if !app_instance.process_input(&InputEvent::diff(&input_event, &new_event)) {
+                //if !app_instance.process_input(&InputEvent::diff(&input_event, &new_event)) {
+                if !app_instance.process_input(&new_event) {
                     match event {
                         WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
                             input:

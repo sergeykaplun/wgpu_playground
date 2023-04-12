@@ -10,5 +10,5 @@ mod assets_helper;
 mod model;
 mod input_event;
 
-#[path = "./examples/pbr/pbr.rs"]
-mod pbr;
+#[path = "./examples/imgui_example/imgui_example.rs"]
+mod imgui_example;

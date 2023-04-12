@@ -15,7 +15,7 @@ log = "0.4.17"
 structopt = "0.3.26"
 nalgebra-glm = "0.18.0"
 rand = "0.8.5"
-#renderdoc = "0.11.0"
+renderdoc = "0.11.0"
 tobj = { version = "3.2.1", features = [
    "async",
 ]}
@@ -24,6 +24,8 @@ anyhow = "1.0.69"
 image = { version = "0.24.5", features = ["png"] }
 ncollide2d = "0.33.0"
 base64 = "0.21.0"
+imgui = "0.10.0"
+imgui-wgpu = "0.22.0"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 winit = "0.28.3"
