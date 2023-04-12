@@ -9,7 +9,7 @@ use raw_window_handle::{
 
 use wgpu::{RequestAdapterOptions, DeviceDescriptor, Features, Limits, SurfaceConfiguration, TextureUsages, Device, Surface};
 use crate::{app::{App, ShaderType}, input_event::InputEvent};
-use crate::gltf_viewer::GLTFViewerExample;
+use crate::imgui_example::ImGUIExample;
 use crate::assets_helper::android_resources::AndroidResourceManager;
 use crate::input_event::EventType;
 
@@ -55,7 +55,7 @@ pub fn createNativeScene(env: *mut JNIEnv, _class: JClass, surface: jobject, ass
     surface.configure(&device, &surface_config); 
     
     let asset_manager = unsafe { ndk_sys::AAssetManager_fromJava(env as *mut _, asset_manager) };
-    let native_scene = GLTFViewerExample::new(&surface_config, &device, queue, ShaderType::WGSL, &AndroidResourceManager{ asset_manager });
+    let native_scene = ImGUIExample::new(&surface_config, &device, queue, ShaderType::WGSL, &AndroidResourceManager{ asset_manager });
 
     Box::into_raw(Box::new(GraphicApp{
         device,
@@ -70,7 +70,7 @@ pub fn createNativeScene(env: *mut JNIEnv, _class: JClass, surface: jobject, ass
 #[jni_fn("com.crest.ukraine.JNITie")]
 pub fn drawFrame(_env: *mut JNIEnv, _class: JClass, native_app: jlong){
     let graphic_app = unsafe { &mut *(native_app as *mut GraphicApp) };
-    <GLTFViewerExample as App<AndroidResourceManager>>::render(&mut graphic_app.native_scene, &graphic_app.surface, &graphic_app.device);
+    <ImGUIExample as App<AndroidResourceManager>>::render(&mut graphic_app.native_scene, &graphic_app.surface, &graphic_app.device);
 }
 
 #[jni_fn("com.crest.ukraine.JNITie")]
@@ -85,7 +85,7 @@ pub fn handleEvent(_env: *mut JNIEnv, _class: JClass, native_app: jlong, action:
     };
     graphic_app.prev_input_event = event;
     if let Some(input_event) = input_event {
-        <GLTFViewerExample as App<AndroidResourceManager>>::process_input(&mut graphic_app.native_scene, &input_event);
+        <ImGUIExample as App<AndroidResourceManager>>::process_input(&mut graphic_app.native_scene, &input_event);
     }
 }
 
@@ -124,6 +124,6 @@ pub struct GraphicApp {
     device: Device,
     surface: Surface,
     prev_input_event: InputEvent,
-    native_scene: GLTFViewerExample,
+    native_scene: ImGUIExample,
     //asset_manager: *mut ndk_sys::AAssetManager
 }
