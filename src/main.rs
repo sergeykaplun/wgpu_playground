@@ -16,22 +16,11 @@ mod skybox;
 
 extern crate nalgebra_glm as glm;
 
-// #[path = "./examples/pbr/pbr.rs"]
-// mod pbr;
-// use pbr::PBRExample;
-
-// #[path = "./examples/skybox/skybox_example.rs"]
-// mod skybox_example;
-// use skybox_example::SkyboxExample;
-
-#[path = "./examples/imgui_example/imgui_example.rs"]
-mod imgui_example;
-use imgui_example::ImGUIExample;
-
+#[path = "./examples/pbr/pbr.rs"]
+mod pbr;
+use pbr::PBRExample;
 
 fn main() {
     let app_variant = AppVariant::from_args();
-    //pollster::block_on(run::<PBRExample>("PBRExample", app_variant));
-    //pollster::block_on(run::<SkyboxExample>("SkyboxExample", app_variant));
-    pollster::block_on(run::<ImGUIExample>("ImGUIExample", app_variant));
+    pollster::block_on(run::<PBRExample>("PBRExample", app_variant));
 }

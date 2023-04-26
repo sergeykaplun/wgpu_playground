@@ -17,7 +17,7 @@ struct VertexOutput {
 @vertex
 fn vs_main(@location(0) position: vec3<f32>,) -> VertexOutput {
     var out: VertexOutput;
-    out.world_pos = position * 1e5;
+    out.world_pos = position * 10.0;
     out.clip_pos = camera.projection * camera.view * vec4<f32>(out.world_pos, 1.0);
     out.clip_pos = out.clip_pos.xyww;
     return out;

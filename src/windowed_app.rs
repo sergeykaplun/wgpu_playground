@@ -27,8 +27,8 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
     
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
-        backends: Backends::all(),
-        //backends: Backends::DX12,
+        //backends: Backends::all(),
+        backends: Backends::DX12,
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
     let surface = unsafe{ instance.create_surface(&window).ok().unwrap() };

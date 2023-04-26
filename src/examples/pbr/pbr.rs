@@ -1,8 +1,12 @@
 use std::{iter, mem};
-
+use std::time::Duration;
+use imgui::Context;
 use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout};
+use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent, skybox::{Skybox, DrawableSkybox}};
+use crate::input_event::EventType;
 
-use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent};
+const DEBUG_TEX_ITEMS: [&str; 3] = ["one", "two", "three"];
+
 struct Renderer {
     queue: Queue,
     
@@ -11,13 +15,18 @@ struct Renderer {
 
     light_buffer: Buffer,
     light_bind_group: BindGroup,
+
+    imgui_context: Context,
+    imgui_renderer: imgui_wgpu::Renderer,
 }
 
 pub struct PBRExample {
     renderer: Renderer,
     model: GLTFModel,
+    skybox: Skybox,
     camera: ArcballCamera,
     time_in_flight: f32,
+    debug_view_texture: usize,
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
@@ -30,7 +39,14 @@ impl<T: ResourceManager> App<T> for PBRExample {
         shader_type: ShaderType,
         resource_manager: &T
     ) -> Self {
-        //let model = pollster::block_on(parse_gltf("models/FlightHelmet/glTF/FlightHelmet.gltf", &device, &queue, resource_manager));
+        let mut imgui_context = imgui::Context::create();
+        imgui_context.io_mut().display_size = [sc.width as f32, sc.height as f32];
+        let imgui_renderer = imgui_wgpu::Renderer::new(&mut imgui_context, &device, &queue, imgui_wgpu::RendererConfig{
+            texture_format: sc.format,
+            depth_format: Some(TextureFormat::Depth24Plus),
+            ..Default::default()
+        });
+
         let model = pollster::block_on(parse_gltf("models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", &device, &queue, resource_manager));
         
         let (light_bind_group_layout, light_bind_group, light_buffer) = {
@@ -69,19 +85,55 @@ impl<T: ResourceManager> App<T> for PBRExample {
             (light_bind_group_layout, light_bind_group, light_buf)
         };
 
-        //let pipeline = Self::create_output_pipeline(&device, sc.format, &light_bind_group_layout, shader_type);
-        let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, shader_type);
+        let camera_bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            label: Some("camera_bind_group_layout"),
+        });
+        
+        let skybox = Skybox::new(device, &queue, resource_manager, sc.format, shader_type, &camera_bind_group_layout, true);
+        let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, shader_type);
         let depth_tex_view = Self::create_depth_texture(sc, device);
-        let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer };
+        let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer, imgui_context, imgui_renderer };
         let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 3.);
-        Self{ renderer, model, camera, time_in_flight: 0.0 }
+        Self{ renderer, model, skybox, camera, time_in_flight: 0.0, debug_view_texture: 0 }
+    }
+
+    fn process_input(&mut self, event: &InputEvent) -> bool {
+        self.camera.input(event);
+        match event.event_type {
+            EventType::Move => self.renderer.imgui_context.io_mut().mouse_pos = [event.coords[0] as f32, event.coords[1] as f32],
+            EventType::Start => {
+                self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = true;
+            },
+            EventType::End => self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = false,
+            EventType::None => (),
+        };
+        false
+    }
+
+    fn tick(&mut self, delta: f32) {
+        self.camera.tick(delta, &self.renderer.queue);
+        self.renderer.imgui_context.io_mut().update_delta_time(Duration::from_secs_f32(delta));
+        self.time_in_flight += delta;
     }
 
     fn render(&mut self, surface: &wgpu::Surface, device: &wgpu::Device) -> Result<(), wgpu::SurfaceError> {
         self.camera.tick(0.01, &self.renderer.queue);
         let light_data = Self::get_light_matrix(self.time_in_flight);
         self.renderer.queue.write_buffer(&self.renderer.light_buffer, 0, bytemuck::cast_slice(&[light_data]));
-        
+
         let output = surface.get_current_texture()?;
         let view = output
             .texture
@@ -117,32 +169,45 @@ impl<T: ResourceManager> App<T> for PBRExample {
                     stencil_ops: None,
                 })
             });
-        
+
             render_pass.set_pipeline(&self.renderer.pipeline);
             render_pass.set_bind_group(0, &self.camera.camera_bind_group, &[]);
             render_pass.set_bind_group(3, &self.renderer.light_bind_group, &[]);
             render_pass.draw_model(&self.model, 2);
+
+            render_pass.draw_skybox(&self.skybox, &self.camera.camera_bind_group);
+
+            let ui = self.renderer.imgui_context.frame();
+            ui.window("Settings")
+                .size([100.0, 50.0], imgui::Condition::FirstUseEver)
+                .build(|| {
+                    if let Some(_) = ui.begin_combo("Mip level", DEBUG_TEX_ITEMS[self.debug_view_texture]) {
+                        for (index, val) in dropdown_items.iter().enumerate() {
+                            if self.debug_view_texture == index {
+                                ui.set_item_default_focus();
+                            }
+                            let clicked = ui.selectable_config(val)
+                                .selected(self.debug_view_texture == index)
+                                .build();
+                            if clicked {
+                                self.debug_view_texture = index;
+                            }
+                        }
+                    }
+                });
+            let draw_data = self.renderer.imgui_context.render();
+            self.renderer.imgui_renderer.render(draw_data, &self.renderer.queue, device, &mut render_pass).unwrap();
         }
-        
+
         self.renderer.queue.submit(iter::once(encoder.finish()));
         output.present();
 
         Ok(())
     }
-
-    fn process_input(&mut self, event: &InputEvent) -> bool {
-        self.camera.input(event);
-        false
-    }
-
-    fn tick(&mut self, delta: f32) {
-        self.camera.tick(delta, &self.renderer.queue);
-        self.time_in_flight += delta;
-    }
 }
 
 impl PBRExample {
-    fn create_pbr_pipeline(device: &wgpu::Device, tex_format: TextureFormat, light_bind_group_layout: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
+    fn create_pbr_pipeline(device: &wgpu::Device, tex_format: TextureFormat, light_bind_group_layout: &BindGroupLayout, camera_bind_group_layout: &BindGroupLayout, shader_type: ShaderType) -> wgpu::RenderPipeline {
         let buffer_layout = 
         [
             VertexBufferLayout{
@@ -208,23 +273,6 @@ impl PBRExample {
             _ => panic!()
         }
         
-        let camera_bind_group_layout = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            label: Some("camera_bind_group_layout"),
-        });
-
         //0, 0 camera_params
         //0, 1 lighting_params
         //1, 0-10 textures

@@ -1,9 +1,10 @@
-use std::{io::{Cursor, BufReader}, borrow::Borrow};
+use std::{io::{Cursor, BufReader}, borrow::Borrow, iter};
 
 use glm::mat4;
-use gltf::{Gltf, material::AlphaMode, Semantic};
+use gltf::{Gltf, material::AlphaMode, Semantic, texture::{MagFilter, MinFilter}};
 use image::GenericImageView;
-use wgpu::{util::{DeviceExt, BufferInitDescriptor}, BufferUsages, Device, Queue, BindGroup, BindGroupDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, BindGroupEntry, Texture, TextureViewDescriptor, TextureView, Sampler};
+use rand::seq::index::sample;
+use wgpu::{util::{DeviceExt, BufferInitDescriptor}, BufferUsages, Device, Queue, BindGroup, BindGroupDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStages, BindGroupEntry, Texture, TextureViewDescriptor, TextureView, Sampler, SamplerDescriptor};
 
 use crate::assets_helper::ResourceManager;
 
@@ -447,6 +448,47 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
     let gltf_reader = BufReader::new(gltf_cursor);
     let gltf = Gltf::from_reader(gltf_reader).ok().unwrap();
     //let textures: Vec<Option<Texture>> = gltf.textures().map(|cur_tex| {
+    // let mut samplers: Vec<Sampler> = gltf.samplers().map(|cur_sampler| {
+    //     device.create_sampler(&SamplerDescriptor{
+    //         label: cur_sampler.name(),
+    //         address_mode_u: match cur_sampler.wrap_s() {
+    //             gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+    //             gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+    //             gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
+    //         },
+    //         address_mode_v: match cur_sampler.wrap_t() {
+    //             gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+    //             gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+    //             gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
+    //         },
+    //         mag_filter: match cur_sampler.mag_filter() {
+    //             Some(MagFilter::Nearest) => wgpu::FilterMode::Nearest,
+    //             Some(MagFilter::Linear) => wgpu::FilterMode::Linear,
+    //             None => wgpu::FilterMode::Linear,
+    //         },
+    //         min_filter: match cur_sampler.min_filter(){
+    //             Some(MinFilter::Nearest) => wgpu::FilterMode::Nearest,
+    //             Some(MinFilter::Linear) => wgpu::FilterMode::Linear,
+    //             Some(MinFilter::NearestMipmapNearest) => wgpu::FilterMode::Nearest,
+    //             Some(MinFilter::LinearMipmapNearest) => wgpu::FilterMode::Linear,
+    //             Some(MinFilter::NearestMipmapLinear) => wgpu::FilterMode::Nearest,
+    //             Some(MinFilter::LinearMipmapLinear) => wgpu::FilterMode::Linear,
+    //             None => wgpu::FilterMode::Linear,
+    //         },
+    //         mipmap_filter: match cur_sampler.min_filter(){
+    //             Some(MinFilter::Nearest) => wgpu::FilterMode::Nearest,
+    //             Some(MinFilter::Linear) => wgpu::FilterMode::Linear,
+    //             Some(MinFilter::NearestMipmapNearest) => wgpu::FilterMode::Nearest,
+    //             Some(MinFilter::LinearMipmapNearest) => wgpu::FilterMode::Linear,
+    //             Some(MinFilter::NearestMipmapLinear) => wgpu::FilterMode::Nearest,
+    //             Some(MinFilter::LinearMipmapLinear) => wgpu::FilterMode::Linear,
+    //             None => wgpu::FilterMode::Linear,
+    //         },
+    //         ..Default::default()
+    //     })
+    // }).collect();
+    let default_sampler = device.create_sampler(&SamplerDescriptor::default());
+
     // TODO no need for opt
     let textures: Vec<Option<(TextureView, Sampler)>> = gltf.textures().map(|cur_tex| {
         let cur_image = match cur_tex.source().source() {
@@ -502,15 +544,53 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
         );
         //Some(wgpu_texture)
         let cur_texture_view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let cur_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+        // let cur_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        //     address_mode_u: wgpu::AddressMode::ClampToEdge,
+        //     address_mode_v: wgpu::AddressMode::ClampToEdge,
+        //     address_mode_w: wgpu::AddressMode::ClampToEdge,
+        //     mag_filter: wgpu::FilterMode::Linear,
+        //     min_filter: wgpu::FilterMode::Nearest,
+        //     mipmap_filter: wgpu::FilterMode::Nearest,
+        //     ..Default::default()
+        // });
+        let cur_sampler = device.create_sampler(&SamplerDescriptor{
+            label: cur_tex.sampler().name(),
+            address_mode_u: match cur_tex.sampler().wrap_s() {
+                gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
+            },
+            address_mode_v: match cur_tex.sampler().wrap_t() {
+                gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
+            },
+            mag_filter: match cur_tex.sampler().mag_filter() {
+                Some(MagFilter::Nearest) => wgpu::FilterMode::Nearest,
+                Some(MagFilter::Linear) => wgpu::FilterMode::Linear,
+                None => wgpu::FilterMode::Linear,
+            },
+            min_filter: match cur_tex.sampler().min_filter(){
+                Some(MinFilter::Nearest) => wgpu::FilterMode::Nearest,
+                Some(MinFilter::Linear) => wgpu::FilterMode::Linear,
+                Some(MinFilter::NearestMipmapNearest) => wgpu::FilterMode::Nearest,
+                Some(MinFilter::LinearMipmapNearest) => wgpu::FilterMode::Linear,
+                Some(MinFilter::NearestMipmapLinear) => wgpu::FilterMode::Nearest,
+                Some(MinFilter::LinearMipmapLinear) => wgpu::FilterMode::Linear,
+                None => wgpu::FilterMode::Linear,
+            },
+            mipmap_filter: match cur_tex.sampler().min_filter(){
+                Some(MinFilter::Nearest) => wgpu::FilterMode::Nearest,
+                Some(MinFilter::Linear) => wgpu::FilterMode::Linear,
+                Some(MinFilter::NearestMipmapNearest) => wgpu::FilterMode::Nearest,
+                Some(MinFilter::LinearMipmapNearest) => wgpu::FilterMode::Linear,
+                Some(MinFilter::NearestMipmapLinear) => wgpu::FilterMode::Nearest,
+                Some(MinFilter::LinearMipmapLinear) => wgpu::FilterMode::Linear,
+                None => wgpu::FilterMode::Linear,
+            },
             ..Default::default()
         });
+        
         Some((cur_texture_view, cur_sampler))
         // Some(device.create_bind_group(&BindGroupDescriptor{
         //     label: Some(&format!("bg for {}", cur_tex.name().unwrap_or("noname"))),

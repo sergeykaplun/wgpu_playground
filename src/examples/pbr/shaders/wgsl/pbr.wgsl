@@ -25,7 +25,7 @@ struct CameraParams {
 @group(0) @binding(0) var<uniform> camera_params : CameraParams;
 
 struct UBONode {
-  matrix :                          mat4x4<f32>,
+  transform :                          mat4x4<f32>,
   //jointMatrix : [[stride(64)]] array<mat4x4<f32>, MAX_NUM_JOINTS>;
   //jointCount : f32;
 };
@@ -42,7 +42,6 @@ struct LightingParams {
 };
 @group(3) @binding(0) var<uniform> lighting_params : LightingParams;
 
-
 struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) world_pos: vec3<f32>,
@@ -57,11 +56,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.color = in.color;
 
-    //var locPos = node.matrix * vec4(in.pos, 1.0);
-    let locPos = camera_params.model * node.matrix * vec4(in.pos, 1.0);
+    let locPos = camera_params.model * node.transform * vec4(in.pos, 1.0);
     //out.normal = normalize(transpose(inverse(mat3(camera_params.model * node.matrix))) * in.normal);
-    out.normal = normalize(camera_params.model * node.matrix * vec4(in.normal, 1.0)).xyz;
-    //out.normal = normalize(node.matrix * vec4(in.normal, 1.0)).xyz;
+    out.normal = normalize(camera_params.model * node.transform * vec4(in.normal, 1.0)).xyz;
 
     //locPos.y = -locPos.y;
 	out.world_pos = locPos.xyz / locPos.w;
@@ -107,7 +104,12 @@ const M_PI : f32 = 3.141592653589793;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var perceptual_roughness: f32;
+    if (true)
+	{
+		return textureSample(t_ao_map, s_ao_map, in.uv0);
+	}
+	
+	var perceptual_roughness: f32;
 	var metallic: f32;
 	var diffuse_color: vec3<f32>;
 	var base_color: vec4<f32>;
