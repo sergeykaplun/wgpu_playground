@@ -26,6 +26,7 @@ ncollide2d = "0.33.0"
 base64 = "0.21.0"
 imgui = "0.10.0"
 imgui-wgpu = "0.22.0"
+ktx = "0.3.2"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 winit = "0.28.3"

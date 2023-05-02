@@ -17,7 +17,6 @@ fn vs_main(@location(0) position: vec3<f32>) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    //var to_fragment = (model_matrix * normalize(in.world_pos)).xyz;
     var to_fragment = normalize(in.world_pos.xyz);
     return textureSample(t_skybox, s_skybox, to_fragment);
 }

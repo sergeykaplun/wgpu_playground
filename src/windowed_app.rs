@@ -27,7 +27,8 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
     
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
-        backends: Backends::all(),
+        backends: Backends::VULKAN,
+        //backends: Backends::all(),
         //backends: Backends::DX12,
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
@@ -62,7 +63,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
 
     let mut moment = std::time::Instant::now();
     let mut fps_data = VecDeque::new();
-    //let mut latest_fps_print = std::time::Instant::now();
+    let mut latest_fps_print = std::time::Instant::now();
     let mut input_event = InputEvent::default();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -76,13 +77,13 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
         moment = std::time::Instant::now();
         
         // TODO this isn't fps. redo
-        // if latest_fps_print.elapsed().as_secs_f32() > 1.0 {
-        //     println!(
-        //         "Avg fps: {}",
-        //         1.0 / (fps_data.iter().sum::<f32>() / fps_data.len() as f32)
-        //     );
-        //     latest_fps_print = std::time::Instant::now();
-        // }
+        if latest_fps_print.elapsed().as_secs_f32() > 1.0 {
+            println!(
+                "Avg fps: {}",
+                1.0 / (fps_data.iter().sum::<f32>() / fps_data.len() as f32)
+            );
+            latest_fps_print = std::time::Instant::now();
+        }
 
         app_instance.tick(delta);
         
@@ -93,8 +94,8 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
                 window_id,
             } if window_id == window.id() => {
                 let new_event = InputEvent::from_winit_event(event);
-                //if !app_instance.process_input(&InputEvent::diff(&input_event, &new_event)) {
-                if !app_instance.process_input(&new_event) {
+                if !app_instance.process_input(&InputEvent::diff(&input_event, &new_event)) {
+                //if !app_instance.process_input(&new_event) {
                     match event {
                         WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
                             input:
