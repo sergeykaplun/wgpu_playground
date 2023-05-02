@@ -1,11 +1,13 @@
 use std::{iter, mem};
 use std::time::Duration;
+use image::GenericImageView;
 use imgui::Context;
-use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout};
+use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout, BindingResource, Device, Sampler};
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent, skybox::{Skybox, DrawableSkybox}};
 use crate::input_event::EventType;
 
-const DEBUG_TEX_ITEMS: [&str; 3] = ["one", "two", "three"];
+const DEBUG_TEX_ITEMS: [&str; 6] = ["none", "albedo", "normal", "physical distribution", "ao", "emissive map"];
+const DEBUG_ITEMS: [&str; 6] = ["none", "albedo", "normal", "physical distribution", "ao", "emissive map"];
 
 struct Renderer {
     queue: Queue,
@@ -27,6 +29,7 @@ pub struct PBRExample {
     camera: ArcballCamera,
     time_in_flight: f32,
     debug_view_texture: usize,
+    debug_view_item: usize,
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
@@ -48,43 +51,6 @@ impl<T: ResourceManager> App<T> for PBRExample {
         });
 
         let model = pollster::block_on(parse_gltf("models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", &device, &queue, resource_manager));
-        
-        let (light_bind_group_layout, light_bind_group, light_buffer) = {
-            let light_uniform_size = mem::size_of::<LightData>() as wgpu::BufferAddress;
-            let light_buf = device.create_buffer(&wgpu::BufferDescriptor {
-                label: None,
-                size: light_uniform_size,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            let light_bind_group_layout = device.create_bind_group_layout(
-                &wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new(light_uniform_size),
-                        },
-                        count: None,
-                    }],
-                }
-            );
-    
-            let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &light_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: light_buf.as_entire_binding(),
-                }],
-                label: None,
-            });
-            (light_bind_group_layout, light_bind_group, light_buf)
-        };
-
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -99,15 +65,126 @@ impl<T: ResourceManager> App<T> for PBRExample {
                         count: None,
                     },
                 ],
-            label: Some("camera_bind_group_layout"),
-        });
-        
-        let skybox = Skybox::new(device, &queue, resource_manager, sc.format, shader_type, &camera_bind_group_layout, true);
+                label: Some("camera_bind_group_layout"),
+            });
+        let skybox = Skybox::default_ktx(device, &queue, sc.format, shader_type, &camera_bind_group_layout);
+        let (light_bind_group_layout, light_bind_group, light_buffer) = {
+            let light_uniform_size = mem::size_of::<LightData>() as wgpu::BufferAddress;
+            let light_buf = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: light_uniform_size,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            let light_bind_group_layout = device.create_bind_group_layout(
+                &wgpu::BindGroupLayoutDescriptor {
+                    label: None,
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: wgpu::BufferSize::new(light_uniform_size),
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::Cube,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::Cube,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 4,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 5,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 6,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
+                }
+            );
+            let brdf_lut = Self::brdf_lut_texture(device, &queue);
+            let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &light_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: light_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::TextureView(&skybox.irradiance_tv),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: BindingResource::Sampler(&skybox.irradiance_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: BindingResource::TextureView(&skybox.prefiltered_envmap_tv),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: BindingResource::Sampler(&skybox.prefiltered_envmap_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: BindingResource::TextureView(&brdf_lut.0),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: BindingResource::Sampler(&brdf_lut.1),
+                    },
+                ],
+                label: None,
+            });
+            (light_bind_group_layout, light_bind_group, light_buf)
+        };
+
         let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, shader_type);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer, imgui_context, imgui_renderer };
         let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 3.);
-        Self{ renderer, model, skybox, camera, time_in_flight: 0.0, debug_view_texture: 0 }
+        Self{ renderer, model, skybox, camera, time_in_flight: 0.0, debug_view_texture: 0, debug_view_item: 0 }
     }
 
     fn process_input(&mut self, event: &InputEvent) -> bool {
@@ -181,8 +258,8 @@ impl<T: ResourceManager> App<T> for PBRExample {
             ui.window("Settings")
                 .size([100.0, 50.0], imgui::Condition::FirstUseEver)
                 .build(|| {
-                    if let Some(_) = ui.begin_combo("Mip level", DEBUG_TEX_ITEMS[self.debug_view_texture]) {
-                        for (index, val) in dropdown_items.iter().enumerate() {
+                    if let Some(_) = ui.begin_combo("Debug texture", DEBUG_TEX_ITEMS[self.debug_view_texture]) {
+                        for (index, val) in DEBUG_TEX_ITEMS.iter().enumerate() {
                             if self.debug_view_texture == index {
                                 ui.set_item_default_focus();
                             }
@@ -191,6 +268,19 @@ impl<T: ResourceManager> App<T> for PBRExample {
                                 .build();
                             if clicked {
                                 self.debug_view_texture = index;
+                            }
+                        }
+                    }
+                    if let Some(_) = ui.begin_combo("Debug view", DEBUG_ITEMS[self.debug_view_item]) {
+                        for (index, val) in DEBUG_ITEMS.iter().enumerate() {
+                            if self.debug_view_item == index {
+                                ui.set_item_default_focus();
+                            }
+                            let clicked = ui.selectable_config(val)
+                                .selected(self.debug_view_item == index)
+                                .build();
+                            if clicked {
+                                self.debug_view_item = index;
                             }
                         }
                     }
@@ -274,9 +364,9 @@ impl PBRExample {
         }
         
         //0, 0 camera_params
-        //0, 1 lighting_params
         //1, 0-10 textures
         //2, 0 node params
+        //3, 0 lighting_params
         
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
@@ -296,7 +386,8 @@ impl PBRExample {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
+                //cull_mode: Some(Face::Back),
+                cull_mode: None,
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false
@@ -355,6 +446,49 @@ impl PBRExample {
         //     view_proj: (light_proj_matrix * light_view_matrix).into(),
         //     position: glm::Vec4::new(light_position.x, light_position.y, light_position.z, 0.0).into()
         // }
+    }
+
+    fn brdf_lut_texture(device: &Device, queue: &Queue) -> (TextureView, Sampler){
+        let brdf_lut_image = image::load_from_memory(include_bytes!("../../../assets/textures/brdf_lut.png")).unwrap();
+        let brdf_lut_rgba = brdf_lut_image.to_rgba8();
+        let (brdf_lut_width, brdf_lut_height) = brdf_lut_image.dimensions();
+
+        let brdf_lut_size = wgpu::Extent3d {
+            width: brdf_lut_width,
+            height: brdf_lut_height,
+            depth_or_array_layers: 1,
+        };
+        let brdf_lut_texture = device.create_texture(
+            &wgpu::TextureDescriptor {
+                size: brdf_lut_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                label: Some("brdf lut texture"),
+                view_formats: &[],
+            }
+        );
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &brdf_lut_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &brdf_lut_rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * brdf_lut_width),
+                rows_per_image: std::num::NonZeroU32::new(brdf_lut_height),
+            },
+            brdf_lut_size,
+        );
+
+        let brdf_lut_texture_view = brdf_lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let brdf_lut_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+        (brdf_lut_texture_view, brdf_lut_sampler)
     }
 }
 

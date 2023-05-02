@@ -22,6 +22,8 @@ pub struct ArcballCamera {
     dist: f32,
     azimuth: f32,
     polar: f32,
+
+    prev_input_event: InputEvent,
 }
 
 impl ArcballCamera {
@@ -71,6 +73,8 @@ impl ArcballCamera {
             dist,
             azimuth: 0.,
             polar: 0.,
+
+            prev_input_event: InputEvent::default(),
         }
     }
 
@@ -95,7 +99,8 @@ impl ArcballCamera {
 }
 
 impl Camera for ArcballCamera {
-    fn input(&mut self, event: &InputEvent) {
+    fn input(&mut self, new_event: &InputEvent) {
+        let event = InputEvent::diff(&self.prev_input_event, &new_event);
         match &event.event_type {
             EventType::Move => {
                 self.azimuth -= event.coords[0] / self.width * self.speed;
@@ -104,6 +109,7 @@ impl Camera for ArcballCamera {
             },
             _ => (),
         }
+        self.prev_input_event = new_event.clone();
     }
 
     fn tick(&mut self, time_delta: f32, queue: &Queue) {
