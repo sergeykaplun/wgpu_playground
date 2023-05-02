@@ -1,6 +1,7 @@
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use winit::event::WindowEvent;
 
+#[derive(Clone)]
 pub enum EventType {
     Start,
     Move,
@@ -8,6 +9,7 @@ pub enum EventType {
     None
 }
 
+#[derive(Clone)]
 pub struct InputEvent {
     pub event_type: EventType,
     pub coords:     [f32; 2],
