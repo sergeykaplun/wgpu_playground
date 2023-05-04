@@ -60,7 +60,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
 
     let mut moment = std::time::Instant::now();
     let mut fps_data = VecDeque::new();
-    //let mut latest_fps_print = std::time::Instant::now();
+    let mut latest_fps_print = std::time::Instant::now();
     let mut input_event = InputEvent::default();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;

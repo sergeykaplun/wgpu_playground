@@ -100,6 +100,7 @@ struct Material {
 	roughness_factor:                       f32,
 	alpha_mask:                             f32,
 	alpha_mask_cutoff:                      f32,
+	alignment:                              vec3<f32>,
 };
 
 const MIN_ROUGHNESS : f32 = 0.04;
@@ -107,10 +108,10 @@ const M_PI : f32 = 3.141592653589793;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    if (true) {
+    /*if (true) {
         let nrm = get_normal(in);
         return vec4(nrm, 1.0);
-    }
+    }*/
 
     var perceptual_roughness: f32;
 	var metallic: f32;
@@ -231,6 +232,11 @@ fn SRGBtoLINEAR(srgbIn: vec4<f32>) -> vec4<f32> {
 // TODO clarify
 fn get_normal(in: VertexOutput) -> vec3<f32> {
     let tangent_normal = textureSample(t_normal_map, s_normal_map, select(in.uv1, in.uv0, material.normal_texture_set == 0)).xyz * 2.0 - 1.0;
+    if(true)
+    {
+        return tangent_normal;
+        //return vec3(in.uv0, 0.0);
+    }
 
     let q1 = dpdx(in.world_pos);
     let q2 = dpdy(in.world_pos);
