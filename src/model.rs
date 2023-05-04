@@ -521,7 +521,7 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format: wgpu::TextureFormat::Rgba8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 label: Some("font atlas texture"),
                 view_formats: &[],
@@ -674,7 +674,7 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
         };
         material.emissive_factor = [cur_material.emissive_factor()[0], cur_material.emissive_factor()[1], cur_material.emissive_factor()[2], 1.0];
 
-        let m = Mat {
+        /*let m = Mat {
             base_color_factor: material.base_color_factor,
             base_color_texture_set: match material.base_color_texture_index {
                 Some(index) => index as i32,
@@ -700,6 +700,19 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
             roughness_factor: material.roughness_factor,
             alpha_mask: 1.0,
             alpha_mask_cutoff: material.alpha_cutoff,
+            alignment: [0.0f32; 3],
+        };*/
+        let m = Mat {
+            base_color_factor: [1.0f32; 4],
+            base_color_texture_set: 0,
+            physical_descriptor_texture_set: 0,
+            normal_texture_set: 0,
+            occlusion_texture_set: 0,
+            emissive_texture_set: 0,
+            metallic_factor: 1.0f32,
+            roughness_factor: 1.0f32,
+            alpha_mask: 0.0f32,
+            alpha_mask_cutoff: 0.5f32,
             alignment: [0.0f32; 3],
         };
         let buff = device.create_buffer_init(&BufferInitDescriptor{

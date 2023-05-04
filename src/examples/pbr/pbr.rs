@@ -2,8 +2,9 @@ use std::{iter, mem};
 use std::time::Duration;
 use image::GenericImageView;
 use imgui::Context;
-use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout, BindingResource, Device, Sampler};
+use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout, BindingResource, Device, Sampler, include_spirv_raw, Features};
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent, skybox::{Skybox, DrawableSkybox}};
+use crate::app::AppVariant;
 use crate::input_event::EventType;
 
 const DEBUG_TEX_ITEMS: [&str; 6] = ["none", "albedo", "normal", "physical distribution", "ao", "emissive map"];
@@ -180,11 +181,16 @@ impl<T: ResourceManager> App<T> for PBRExample {
             (light_bind_group_layout, light_bind_group, light_buf)
         };
 
-        let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, shader_type);
+        //let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, shader_type);
+        let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, ShaderType::SPIRV);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer, imgui_context, imgui_renderer };
         let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 3.);
         Self{ renderer, model, skybox, camera, time_in_flight: 0.0, debug_view_texture: 0, debug_view_item: 0 }
+    }
+
+    fn get_extra_device_features(_app_variant: AppVariant) -> Features {
+        Features::SPIRV_SHADER_PASSTHROUGH
     }
 
     fn process_input(&mut self, event: &InputEvent) -> bool {
@@ -360,7 +366,22 @@ impl PBRExample {
                     targets: &color_states
                 }
             },
-            _ => panic!()
+            ShaderType::SPIRV => {
+                unsafe {
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/pbr.vert.spv")));
+                    spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/pbr.frag.spv")));
+                };
+                vertex_state = wgpu::VertexState {
+                    module: &spirv_modules[0],
+                    entry_point: "main",
+                    buffers: &buffer_layout,
+                };
+                fragment_state = FragmentState {
+                    module: &spirv_modules[1],
+                    entry_point: "main",
+                    targets: &color_states
+                }
+            }
         }
         
         //0, 0 camera_params
