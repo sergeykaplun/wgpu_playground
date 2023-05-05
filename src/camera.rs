@@ -20,8 +20,8 @@ pub struct ArcballCamera {
     pub camera_bind_group: BindGroup,
 
     dist: f32,
-    azimuth: f32,
-    polar: f32,
+    pub azimuth: f32,
+    pub polar: f32,
 
     prev_input_event: InputEvent,
 }

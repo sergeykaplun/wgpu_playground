@@ -1,14 +1,16 @@
 use std::{iter, mem};
+use std::f32::consts::PI;
 use std::time::Duration;
 use image::GenericImageView;
 use imgui::Context;
 use wgpu::{Queue, TextureFormat, VertexBufferLayout, VertexAttribute, ColorTargetState, VertexState, FragmentState, ShaderModule, PrimitiveState, Face, DepthStencilState, StencilState, DepthBiasState, MultisampleState, ShaderModuleDescriptor, RenderPipeline, RenderPassDepthStencilAttachment, Operations, TextureView, BindGroup, Buffer, BindGroupLayout, BindingResource, Device, Sampler, include_spirv_raw, Features};
+use wgpu::Face::Back;
 use crate::{app::{App, ShaderType}, camera::{ArcballCamera, Camera}, model::{GLTFModel, Drawable, NOD_MM_BGL, MATERIAL_BGL, parse_gltf}, assets_helper::ResourceManager, input_event::InputEvent, skybox::{Skybox, DrawableSkybox}};
 use crate::app::AppVariant;
 use crate::input_event::EventType;
 
-const DEBUG_TEX_ITEMS: [&str; 6] = ["none", "albedo", "normal", "physical distribution", "ao", "emissive map"];
-const DEBUG_ITEMS: [&str; 6] = ["none", "albedo", "normal", "physical distribution", "ao", "emissive map"];
+const DEBUG_TEX_ITEMS: [&str; 7] = ["none", "base color", "normal", "occlusion", "emissive", "metallic", "roughness"];
+const DEBUG_ITEMS: [&str; 6] = ["None", "diff(l, n)", "F(l,h)", "G(l,v,h)", "D(h)", "Specular"];
 
 struct Renderer {
     queue: Queue,
@@ -51,7 +53,9 @@ impl<T: ResourceManager> App<T> for PBRExample {
             ..Default::default()
         });
 
-        let model = pollster::block_on(parse_gltf("models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", &device, &queue, resource_manager));
+        //let model = pollster::block_on(parse_gltf("models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", &device, &queue, resource_manager));
+        let model = pollster::block_on(parse_gltf("./models/maserati_ghibli_hybrid/scene.gltf", &device, &queue, resource_manager));
+        //let model = pollster::block_on(parse_gltf("./models/vehicle_zis-101/scene.gltf", &device, &queue, resource_manager));
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -185,7 +189,9 @@ impl<T: ResourceManager> App<T> for PBRExample {
         let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, ShaderType::SPIRV);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer, imgui_context, imgui_renderer };
-        let camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 3.);
+        let mut camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 6.);
+        camera.azimuth = PI / 4.;
+        camera.polar = -PI / 4.;
         Self{ renderer, model, skybox, camera, time_in_flight: 0.0, debug_view_texture: 0, debug_view_item: 0 }
     }
 
@@ -258,7 +264,7 @@ impl<T: ResourceManager> App<T> for PBRExample {
             render_pass.set_bind_group(3, &self.renderer.light_bind_group, &[]);
             render_pass.draw_model(&self.model, 2);
 
-            render_pass.draw_skybox(&self.skybox, &self.camera.camera_bind_group);
+            //render_pass.draw_skybox(&self.skybox, &self.camera.camera_bind_group);
 
             let ui = self.renderer.imgui_context.frame();
             ui.window("Settings")
@@ -407,8 +413,8 @@ impl PBRExample {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                //cull_mode: Some(Face::Back),
                 cull_mode: None,
+                //cull_mode: Some(Back),
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false
