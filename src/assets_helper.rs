@@ -1,5 +1,7 @@
 use std::io::{Cursor, BufReader};
 use anyhow::bail;
+use ktx::{include_ktx, Ktx, KtxInfo};
+use wgpu::{Device, Extent3d, Queue, Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -33,6 +35,53 @@ pub trait ResourceManager {
         }
     }
     fn load_obj_model(&self, file_name: &str, device: &wgpu::Device) -> anyhow::Result<Vec<Mesh>>;
+    fn empty_tex(&self, device: &Device, queue: &Queue) -> TextureView {
+        self.load_tex_2d_ktx(device, queue,&include_ktx!("../assets/textures/papermill.ktx")).create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    fn load_tex_2d_ktx(&self, device: &Device, queue: &Queue, ktx_image: &Ktx<&[u8]>) -> Texture {
+        //let ktx_image: Ktx<_> = include_ktx!(file_name);
+        let format = TextureFormat::Rgba16Float;
+        let texture_size = Extent3d {
+            width: ktx_image.pixel_width(),
+            height: ktx_image.pixel_height(),
+            depth_or_array_layers: 1,
+        };
+        let empty_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Skybox Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        let img_data: &[u8] = ktx_image.textures().nth(0).unwrap();
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &empty_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0, y: 0, z: 0,
+                },
+                aspect: TextureAspect::All,
+            },
+            img_data,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(8 * texture_size.width),
+                rows_per_image: std::num::NonZeroU32::new(texture_size.height),
+            },
+            Extent3d {
+                width: texture_size.width,
+                height: texture_size.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        empty_texture
+    }
 }
 
 pub struct DesktopResourceManager;

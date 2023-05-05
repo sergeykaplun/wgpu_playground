@@ -1,4 +1,5 @@
 use std::{io::{Cursor, BufReader}, borrow::Borrow, iter};
+use std::path::PathBuf;
 
 use glm::mat4;
 use gltf::{Gltf, material::AlphaMode, Semantic, texture::{MagFilter, MinFilter}};
@@ -417,6 +418,7 @@ impl<'a, 'b> Drawable<'b> for wgpu::RenderPass<'a> where 'b: 'a, {
         self.set_vertex_buffer(0, model.vertex_buffer.slice(..));
         self.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         let nodes = &model.nodes;
+        //for (i, node) in nodes.iter().enumerate() {
         for (i, node) in nodes.iter().enumerate() {
             self.set_bind_group(mode_mm_bg_index, &model.nodes_matrices[i], &[]);
             self.draw_node(&node, &model);
@@ -427,7 +429,7 @@ impl<'a, 'b> Drawable<'b> for wgpu::RenderPass<'a> where 'b: 'a, {
         if node.mesh.primitives.len() > 0 {
             let mesh = node.mesh.borrow();
             let primives: &Vec<Primitive> = &mesh.primitives;
-            for primitive in primives {
+            for primitive in primives.iter()/*.filter(|p| model.materials[p.material_index as usize].alpha_mode == AlphaMode::Blend)*/ {
                 if primitive.index_count > 0 {
                     // TODO
                     //let tex_index = model.materials[primitive.material_index as usize].base_color_texture_index as usize;
@@ -443,6 +445,7 @@ impl<'a, 'b> Drawable<'b> for wgpu::RenderPass<'a> where 'b: 'a, {
 }
 
 pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Device, queue: &Queue, resource_manager: &T) -> GLTFModel {
+    let empty_tex = resource_manager.empty_tex(device, queue);
     let gltf_text = resource_manager.load_string(file_name).ok().unwrap();
     let gltf_cursor = Cursor::new(gltf_text);
     let gltf_reader = BufReader::new(gltf_cursor);
@@ -487,22 +490,25 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
     //         ..Default::default()
     //     })
     // }).collect();
-    let default_sampler = device.create_sampler(&SamplerDescriptor::default());
+    //let default_sampler = device.create_sampler(&SamplerDescriptor::default());
 
     // TODO no need for opt
     let textures: Vec<Option<(TextureView, Sampler)>> = gltf.textures().map(|cur_tex| {
         let cur_image = match cur_tex.source().source() {
             gltf::image::Source::Uri { uri, .. } => {
-                // if !uri.contains("baseColor") {
-                //     return None
-                // }
-                // TODO
-                //let new_uri = format!("{}{}", "models/FlightHelmet/glTF/", uri);
-                //let data = resource_manager.load_binary(&new_uri).unwrap();
-                
-                let data = resource_manager.load_base64(uri).unwrap();
+                let data = if uri.starts_with("data:") {
+                    Some(resource_manager.load_base64(uri).unwrap())
+                } else {
+                    let mut path_buf = PathBuf::from(file_name);
+                    if let Some(parent) = path_buf.parent() {
+                        let new_uri = parent.join(uri);
+                        Some(resource_manager.load_binary(&new_uri.into_os_string().into_string().unwrap()).unwrap())
+                    } else {
+                        None
+                    }
+                };
 
-                image::load_from_memory(&data).unwrap()
+                image::load_from_memory(&data.unwrap()).unwrap()
             },
             _ => panic!("AAAAAAAAAAAAAA")
         };
@@ -609,29 +615,29 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
         //)
     }).collect();
     
-    let (empty_texture_view, default_sampler) = {
-        let empty_texture = device.create_texture(
-            &wgpu::TextureDescriptor {
-                size: wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                label: Some("1x1 tex"),
-                view_formats: &[],
-            }
-        );
-        
-        let empty_texture_view = empty_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let empty_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
-        (empty_texture_view, empty_sampler)
-    };
-
+    // let (empty_tex, default_sampler) = {
+    //     let empty_texture = device.create_texture(
+    //         &wgpu::TextureDescriptor {
+    //             size: wgpu::Extent3d {
+    //                 width: 1,
+    //                 height: 1,
+    //                 depth_or_array_layers: 1,
+    //             },
+    //             mip_level_count: 1,
+    //             sample_count: 1,
+    //             dimension: wgpu::TextureDimension::D2,
+    //             format: wgpu::TextureFormat::Rgba8UnormSrgb,
+    //             usage: wgpu::TextureUsages::TEXTURE_BINDING,
+    //             label: Some("1x1 tex"),
+    //             view_formats: &[],
+    //         }
+    //     );
+    //
+    //     let empty_texture_view = empty_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    //     let empty_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+    //     (empty_texture_view, empty_sampler)
+    // };
+    let default_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
     let material_bgl = &device.create_bind_group_layout(&MATERIAL_BGL);
     let materials = gltf.materials().map(|cur_material| {
         let mut material = Material::default();
@@ -674,7 +680,7 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
         };
         material.emissive_factor = [cur_material.emissive_factor()[0], cur_material.emissive_factor()[1], cur_material.emissive_factor()[2], 1.0];
 
-        /*let m = Mat {
+        let m = Mat {
             base_color_factor: material.base_color_factor,
             base_color_texture_set: match material.base_color_texture_index {
                 Some(index) => index as i32,
@@ -701,20 +707,20 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
             alpha_mask: 1.0,
             alpha_mask_cutoff: material.alpha_cutoff,
             alignment: [0.0f32; 3],
-        };*/
-        let m = Mat {
-            base_color_factor: [1.0f32; 4],
-            base_color_texture_set: 0,
-            physical_descriptor_texture_set: 0,
-            normal_texture_set: 0,
-            occlusion_texture_set: 0,
-            emissive_texture_set: 0,
-            metallic_factor: 1.0f32,
-            roughness_factor: 1.0f32,
-            alpha_mask: 0.0f32,
-            alpha_mask_cutoff: 0.5f32,
-            alignment: [0.0f32; 3],
         };
+        // let m = Mat {
+        //     base_color_factor: [1.0f32; 4],
+        //     base_color_texture_set: 0,
+        //     physical_descriptor_texture_set: 0,
+        //     normal_texture_set: 0,
+        //     occlusion_texture_set: 0,
+        //     emissive_texture_set: 0,
+        //     metallic_factor: 1.0f32,
+        //     roughness_factor: 1.0f32,
+        //     alpha_mask: 0.0f32,
+        //     alpha_mask_cutoff: 0.5f32,
+        //     alignment: [0.0f32; 3],
+        // };
         let buff = device.create_buffer_init(&BufferInitDescriptor{
             label: Some(format!("material {} buffer", cur_material.name().unwrap_or("unnamed")).as_str()),
             contents: bytemuck::cast_slice(&[m]),
@@ -731,7 +737,7 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                     resource: wgpu::BindingResource::TextureView(
                         match material.base_color_texture_index {
                             Some(ind) => &textures[ind as usize].as_ref().unwrap().0,
-                            None => &empty_texture_view,
+                            None => &empty_tex,
                         }
                         //&textures[material.base_color_texture_index.unwrap() as usize].as_ref().unwrap().0
                     )
@@ -751,13 +757,19 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                 BindGroupEntry{
                     binding: 2,
                     resource: wgpu::BindingResource::TextureView(
-                        &textures[material.metallic_roughness_texture_index.unwrap() as usize].as_ref().unwrap().0
+                        match material.metallic_roughness_texture_index {
+                            Some(ind) => &textures[ind as usize].as_ref().unwrap().0,
+                            None => &empty_tex,
+                        }
                     )
                 },
                 BindGroupEntry{
                     binding: 3,
                     resource: wgpu::BindingResource::Sampler(
-                        &textures[material.metallic_roughness_texture_index.unwrap() as usize].as_ref().unwrap().1
+                        match material.metallic_roughness_texture_index {
+                            Some(ind) => &textures[ind as usize].as_ref().unwrap().1,
+                            None => &default_sampler,
+                        }
                     )
                 },
 
@@ -765,13 +777,19 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                 BindGroupEntry{
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(
-                        &textures[material.normal_texture_index.unwrap() as usize].as_ref().unwrap().0
+                        match material.normal_texture_index {
+                            Some(ind) => &textures[ind as usize].as_ref().unwrap().0,
+                            None => &empty_tex,
+                        }
                     )
                 },
                 BindGroupEntry{
                     binding: 5,
                     resource: wgpu::BindingResource::Sampler(
-                        &textures[material.normal_texture_index.unwrap() as usize].as_ref().unwrap().1
+                        match material.normal_texture_index {
+                            Some(ind) => &textures[ind as usize].as_ref().unwrap().1,
+                            None => &default_sampler,
+                        }
                     )
                 },
 
@@ -779,13 +797,19 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                 BindGroupEntry{
                     binding: 6,
                     resource: wgpu::BindingResource::TextureView(
-                        &textures[material.occlusion_texture_index.unwrap() as usize].as_ref().unwrap().0
+                        match material.occlusion_texture_index {
+                            Some(ind) => &textures[ind as usize].as_ref().unwrap().0,
+                            None => &empty_tex,
+                        }
                     )
                 },
                 BindGroupEntry{
                     binding: 7,
                     resource: wgpu::BindingResource::Sampler(
-                        &textures[material.occlusion_texture_index.unwrap() as usize].as_ref().unwrap().1
+                        match material.occlusion_texture_index {
+                            Some(ind) => &textures[ind as usize].as_ref().unwrap().1,
+                            None => &default_sampler,
+                        }
                     )
                 },
 
@@ -795,9 +819,8 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                     resource: wgpu::BindingResource::TextureView(
                         match material.emissive_texture_index {
                             Some(ind) => &textures[ind as usize].as_ref().unwrap().0,
-                            None => &empty_texture_view,
+                            None => &empty_tex
                         }
-                        //&textures[material.emissive_texture_index.unwrap() as usize].as_ref().unwrap().0
                     )
                 },
                 BindGroupEntry{
@@ -807,7 +830,6 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
                             Some(ind) => &textures[ind as usize].as_ref().unwrap().1,
                             None => &default_sampler,
                         }
-                        //&textures[material.emissive_texture_index.unwrap() as usize].as_ref().unwrap().1
                     )
                 },
                 BindGroupEntry{
@@ -823,10 +845,18 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
     for buffer in gltf.buffers() {
         match buffer.source() {
             gltf::buffer::Source::Uri(uri) => {
-                //let new_uri = format!("{}{}", "models/FlightHelmet/glTF/", uri);
-                //let bin = resource_manager.load_binary(&new_uri).unwrap();
-                let bin = resource_manager.load_base64(uri).unwrap();
-                buffer_data.push(bin);
+                let data = if uri.starts_with("data:") {
+                    Some(resource_manager.load_base64(uri).unwrap())
+                } else {
+                    let mut path_buf = PathBuf::from(file_name);
+                    if let Some(parent) = path_buf.parent() {
+                        let new_uri = parent.join(uri);
+                        Some(resource_manager.load_binary(&new_uri.into_os_string().into_string().unwrap()).unwrap())
+                    } else {
+                        None
+                    }
+                };
+                buffer_data.push(data.unwrap());
             },
             _ => panic!("AAAAAAA")
         }

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Vehicle ZIS-101
+* source:	https://sketchfab.com/3d-models/vehicle-zis-101-64681d43998343cfb8dfb666634e8689
+* author:	Anton Sereda (https://sketchfab.com/antonsereda)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Vehicle ZIS-101" (https://sketchfab.com/3d-models/vehicle-zis-101-64681d43998343cfb8dfb666634e8689) by Anton Sereda (https://sketchfab.com/antonsereda) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
