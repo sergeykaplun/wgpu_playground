@@ -206,7 +206,7 @@ impl GLTFViewerExample {
             &wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -225,7 +225,7 @@ impl GLTFViewerExample {
             }
         );
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Output pipeline"),
+            label: Some("~~~~~~~~~Output pipeline"),
             layout: Some(&pipeline_layout),
             vertex: vertex_state,
             primitive: PrimitiveState {

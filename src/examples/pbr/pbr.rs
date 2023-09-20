@@ -53,8 +53,8 @@ impl<T: ResourceManager> App<T> for PBRExample {
             ..Default::default()
         });
 
-        //let model = pollster::block_on(parse_gltf("models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", &device, &queue, resource_manager));
-        let model = pollster::block_on(parse_gltf("./models/maserati_ghibli_hybrid/scene.gltf", &device, &queue, resource_manager));
+        let model = pollster::block_on(parse_gltf("models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf", &device, &queue, resource_manager));
+        //let model = pollster::block_on(parse_gltf("./models/maserati_ghibli_hybrid/scene.gltf", &device, &queue, resource_manager));
         //let model = pollster::block_on(parse_gltf("./models/vehicle_zis-101/scene.gltf", &device, &queue, resource_manager));
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
@@ -187,6 +187,7 @@ impl<T: ResourceManager> App<T> for PBRExample {
 
         //let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, shader_type);
         let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, ShaderType::SPIRV);
+        //let pipeline = Self::create_pbr_pipeline(&device, sc.format, &light_bind_group_layout, &camera_bind_group_layout, ShaderType::WGSL);
         let depth_tex_view = Self::create_depth_texture(sc, device);
         let renderer = Renderer { queue, pipeline, depth_tex_view, light_bind_group, light_buffer, imgui_context, imgui_renderer };
         let mut camera = ArcballCamera::new(&device, sc.width as f32, sc.height as f32, 45., 0.01, 200., 7., 6.);

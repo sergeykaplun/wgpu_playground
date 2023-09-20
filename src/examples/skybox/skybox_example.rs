@@ -1,6 +1,6 @@
 use std::iter;
 use wgpu::Queue;
-use crate::{app::App, app::ShaderType, assets_helper::ResourceManager, camera::{ArcballCamera, Camera}, input_event::InputEvent, skybox::{Skybox, Drawable}};
+use crate::{app::App, app::ShaderType, assets_helper::ResourceManager, camera::{ArcballCamera, Camera}, input_event::InputEvent, skybox::{Skybox, DrawableSkybox}};
 
 pub struct Renderer {
     queue: Queue,
@@ -35,7 +35,7 @@ impl<T: ResourceManager> App<T> for SkyboxExample{
                 }],
             label: Some("camera_bind_group_layout"),
         });
-        let skybox = Skybox::new(device, &queue, resource_manager, sc.format, shader_type, &camera_bind_group_layout);
+        let skybox = Skybox::new(device, &queue, resource_manager, sc.format, shader_type, &camera_bind_group_layout, false);
         Self{
             renderer: Renderer { queue },
             skybox: skybox,

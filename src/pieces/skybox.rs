@@ -120,8 +120,11 @@ impl Skybox {
                 },
             ],
         });
-        let pipeline = Self::create_skybox_pipeline(device, camera_bgl, &skybox_bgl, tex_format, true, shader_type);
-        let ktx_image: Ktx<_> = include_ktx!("../../assets/textures/papermill.ktx");
+        //let pipeline = Self::create_skybox_pipeline(device, camera_bgl, &skybox_bgl, tex_format, true, shader_type);
+        let pipeline = Self::create_skybox_pipeline(device, camera_bgl, &skybox_bgl, tex_format, false, shader_type);
+        //let ktx_image: Ktx<_> = include_ktx!("../../assets/textures/papermill.ktx");
+        //let ktx_image: Ktx<_> = include_ktx!("../../assets/textures/stars.ktx");
+        let ktx_image: Ktx<_> = include_ktx!("../../assets/textures/teide_skybox/skybox_16.ktx");
         let mip_count = ktx_image.textures().count() as u32;
         let format = TextureFormat::Rgba16Float;
         let texture_size = Extent3d {

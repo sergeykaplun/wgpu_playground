@@ -10,5 +10,10 @@ mod assets_helper;
 mod model;
 mod input_event;
 
-#[path = "./examples/imgui_example/imgui_example.rs"]
-mod imgui_example;
+#[path = "./pieces/geometry_primitives.rs"]
+mod geometry_primitives;
+#[path = "./pieces/skybox.rs"]
+mod skybox;
+
+#[path = "./examples/skybox/skybox_example.rs"]
+mod skybox_example;

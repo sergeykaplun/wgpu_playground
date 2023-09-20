@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, mem};
 
-use wgpu::{Buffer, BindGroup, Device, util::DeviceExt, Queue, BindGroupLayoutEntry, BindGroupEntry, BufferUsages, BufferDescriptor};
+use wgpu::{Buffer, BindGroup, Device, util::DeviceExt, Queue, BindGroupLayoutEntry, BindGroupEntry, BufferUsages, BufferDescriptor, BindGroupLayout};
 use crate::input_event::{InputEvent, EventType};
 
 pub trait Camera {
@@ -24,6 +24,7 @@ pub struct ArcballCamera {
     pub polar: f32,
 
     prev_input_event: InputEvent,
+    pub bgl: BindGroupLayout,
 }
 
 impl ArcballCamera {
@@ -58,7 +59,7 @@ impl ArcballCamera {
             }],
             label: Some("camera_bind_group"),
         });
-        
+
         Self{
             width,
             height,
@@ -75,6 +76,7 @@ impl ArcballCamera {
             polar: 0.,
 
             prev_input_event: InputEvent::default(),
+            bgl: camera_bind_group_layout
         }
     }
 

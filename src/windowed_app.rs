@@ -2,6 +2,7 @@ use std::{collections::VecDeque, path::Path};
 
 use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
+use winit::dpi::Size;
 
 use crate::{app::{App, AppVariant}, assets_helper::DesktopResourceManager, input_event::InputEvent};
 
@@ -18,7 +19,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
             None
         },
     };
-    let window = winit::window::WindowBuilder::new().with_title(title).build(&event_loop).unwrap();
+    let window = winit::window::WindowBuilder::new().with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080)).with_title(title).build(&event_loop).unwrap();
     if let Some(icon) = icon {
         let (icon_width, icon_height) = icon.dimensions();
         window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))
@@ -35,6 +36,11 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
         force_fallback_adapter: false,
         compatible_surface: Some(&surface),
     }).await.unwrap();
+
+    println!(
+        "Device: {}",
+        adapter.get_info().name
+    );
     let (device, queue) = adapter
         .request_device(
             &DeviceDescriptor {
