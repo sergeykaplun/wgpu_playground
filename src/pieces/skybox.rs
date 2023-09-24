@@ -165,8 +165,8 @@ impl Skybox {
                     face_data,
                     wgpu::ImageDataLayout {
                         offset: 0,
-                        bytes_per_row: std::num::NonZeroU32::new(8 * cur_mip_size),
-                        rows_per_image: std::num::NonZeroU32::new(cur_mip_size),
+                        bytes_per_row: Some((8 * cur_mip_size).into()),
+                        rows_per_image: Some(cur_mip_size.into()),
                     },
                     Extent3d {
                         width: cur_mip_size,
@@ -446,8 +446,8 @@ impl Skybox {
                 &face_rgba,
                 ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: std::num::NonZeroU32::new(face_size.0 * 4),
-                    rows_per_image: std::num::NonZeroU32::new(face_size.1),
+                    bytes_per_row: Some((face_size.0 * 4).into()),
+                    rows_per_image: Some(face_size.1.into()),
                 },
                 Extent3d{
                     width: face_size.0,
@@ -461,7 +461,7 @@ impl Skybox {
             label: None,
             dimension: Some(wgpu::TextureViewDimension::Cube),
             base_mip_level: 0,
-            mip_level_count: NonZeroU32::new(1),
+            mip_level_count: Some(1u32.into()),
             ..wgpu::TextureViewDescriptor::default()
         });
 
@@ -529,8 +529,8 @@ impl Skybox {
                 label: None,
                 dimension: Some(wgpu::TextureViewDimension::Cube),
                 base_mip_level: target_mip - 1,
-                mip_level_count: NonZeroU32::new(1),
-                ..wgpu::TextureViewDescriptor::default()
+                mip_level_count: Some(1u32.into()),
+                ..TextureViewDescriptor::default()
             });
             let mip_sample_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &mip_generation_pipeline.get_bind_group_layout(0),
@@ -553,7 +553,7 @@ impl Skybox {
                     dimension: Some(wgpu::TextureViewDimension::D2),
                     aspect: wgpu::TextureAspect::All,
                     base_mip_level: target_mip,
-                    mip_level_count: NonZeroU32::new(1),
+                    mip_level_count: Some(1u32.into()),
                     base_array_layer: face_index,
                     array_layer_count: None,
                 });
@@ -641,7 +641,7 @@ impl Skybox {
                     dimension: Some(wgpu::TextureViewDimension::D2),
                     aspect: wgpu::TextureAspect::All,
                     base_mip_level: target_mip,
-                    mip_level_count: NonZeroU32::new(1),
+                    mip_level_count: Some(1u32.into()),
                     base_array_layer: face_index,
                     array_layer_count: None,
                 });
@@ -684,8 +684,8 @@ impl Skybox {
             format: Some(format),
             dimension: Some(TextureViewDimension::Cube),
             aspect: TextureAspect::All,
-            mip_level_count: NonZeroU32::new(num_mips),
-            array_layer_count: NonZeroU32::new(6),
+            mip_level_count: Some(num_mips.into()),
+            array_layer_count: Some(6u32.into()),
             ..Default::default()
         });
         let sampler = device.create_sampler(&SamplerDescriptor{
@@ -800,7 +800,7 @@ impl Skybox {
                     dimension: Some(wgpu::TextureViewDimension::D2),
                     aspect: wgpu::TextureAspect::All,
                     base_mip_level: target_mip,
-                    mip_level_count: NonZeroU32::new(1),
+                    mip_level_count: Some(1u32.into()),
                     base_array_layer: face_index,
                     array_layer_count: None,
                 });
@@ -844,8 +844,8 @@ impl Skybox {
             format: Some(format),
             dimension: Some(TextureViewDimension::Cube),
             aspect: TextureAspect::All,
-            mip_level_count: NonZeroU32::new(num_mips),
-            array_layer_count: NonZeroU32::new(6),
+            mip_level_count: Some(num_mips.into()),
+            array_layer_count: Some(6u32.into()),
             ..Default::default()
         });
         let sampler = device.create_sampler(&SamplerDescriptor{
@@ -892,7 +892,7 @@ impl Skybox {
     }
 }
 
-pub(crate) trait DrawableSkybox<'a> {
+pub trait DrawableSkybox<'a> {
     fn draw_skybox(&mut self, skybox: &'a Skybox, camera_bind_group: &'a BindGroup);
 }
 

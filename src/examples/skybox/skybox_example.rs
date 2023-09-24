@@ -15,6 +15,7 @@ pub struct SkyboxExample {
 impl<T: ResourceManager> App<T> for SkyboxExample{
     fn new(
         sc: &wgpu::SurfaceConfiguration,
+        _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
         queue: Queue,
         shader_type: ShaderType,

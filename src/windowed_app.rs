@@ -62,7 +62,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
     };
     surface.configure(&device, &surface_config);
 
-    let mut app_instance = T::new(&surface_config, &device, queue, app_variant.shader_type, &DesktopResourceManager{});
+    let mut app_instance = T::new(&surface_config, &adapter, &device, queue, app_variant.shader_type, &DesktopResourceManager{});
 
     let mut moment = std::time::Instant::now();
     let mut fps_data = VecDeque::new();

@@ -1,5 +1,6 @@
 struct PushConstants {
     iTime: f32,
+    resolution: u32,
 }
 @group(0) @binding(0) var t_output: texture_storage_3d<rgba16float, write>;
 @group(1) @binding(0) var<uniform> constants : PushConstants;
@@ -27,10 +28,10 @@ fn voronoi(x: vec2<f32>) -> vec3<f32> {
             let to_neightbour: vec2<f32> = vec2<f32>(f32(i), f32(j));
             var center_inside_neighbour: vec2<f32> = hash2(n + to_neightbour);
 
-//            #ifdef ANIMATE
+//#ifdef ANIMATE
             let time: f32 = constants.iTime;
             center_inside_neighbour = 0.5 + 0.5 * sin(6.2831 * center_inside_neighbour + time);
-//            #endif
+//#endif
 
             let r: vec2<f32> = to_neightbour + center_inside_neighbour - f;
             let d: f32 = dot(r, r);
@@ -85,20 +86,26 @@ fn hsv2rgb(c: vec3<f32>) -> vec3<f32> {
 fn emit(@builtin(local_invocation_id) localInvocationID: vec3<u32>, @builtin(workgroup_id) workgroupID: vec3<u32>,
         /*@builtin(local_invocation_index) localInvocationIndex: u32, @builtin(global_invocation_id) globalInvocationID: vec3<u32>*/) {
     let tex_coord: vec3<i32> = vec3<i32>(workgroupID) * vec3(4) + vec3<i32>(localInvocationID);
-    let uv = vec3<f32>(tex_coord) / vec3<f32>(512.);
+    let uv = vec3<f32>(tex_coord) / vec3(f32(constants.resolution));
+    /*
     let TILES = 5.;
     let scaled_uv = uv * TILES;
     let vor = voronoi(scaled_uv.xz);
-    //let cntr_mask = step(length(vec3<f32>(vor.y, (0.5 - uv.y) * TILES, vor.z)), 0.1);
-    let cntr_mask = step(distance(scaled_uv, vec3<f32>(vor.y, 0.1 * TILES, vor.z)), 0.1);
-
+    let cntr_mask = smoothstep(0.2, 0.1, distance(scaled_uv, vec3<f32>(vor.y, 0.1 * TILES, vor.z)))
+                  * step(length(vec2<f32>(vor.yz - 0.5 * TILES)), 0.45 * TILES);
     let hash = hash2(vor.yz * constants.iTime);
-    let mask = cntr_mask * step(0.99, hash.x);
-            //* step(0.8, hash2(vor.yz * floor(constants.iTime % 10.) * 0.1).x);
-            //* step(floor(constants.iTime % 10.) * 0.1, hash2(vor.yz).x);
+    let mask = cntr_mask * step(0.995, hash.x);
     if(mask > 0.0)
     {
-        var clr = vec4(hsv2rgb(vec3(hash2(vor.yz).x, 1., 1.)), 1.0);
-        textureStore(t_output, tex_coord, vec4(clr));
+        var clr = vec4(hsv2rgb(vec3(hash2(vor.yz).x, 1., 1.)), cntr_mask);
+        textureStore(t_output, tex_coord, clr);
+    }
+    */
+
+    let mask = step(distance(uv, vec3<f32>(0.5 + 0.4 * sin(constants.iTime), 0.1, 0.5 + 0.4 * cos(constants.iTime))), 0.1);
+    if(mask > 0.0)
+    {
+        var clr = vec4(hsv2rgb(vec3(fract(constants.iTime * 0.2), 1., 1.)), mask);
+        textureStore(t_output, tex_coord, clr);
     }
 }

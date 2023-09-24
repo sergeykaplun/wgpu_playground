@@ -1,4 +1,5 @@
 use std::{io::{Cursor, BufReader}, borrow::Borrow, iter};
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 use glm::mat4;
@@ -543,8 +544,9 @@ pub async fn parse_gltf<T: ResourceManager>(file_name: &str, device: &wgpu::Devi
             &cur_rgba,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * cur_width),
-                rows_per_image: std::num::NonZeroU32::new(cur_height),
+                //TODO fix
+                bytes_per_row: Some((4u32 * cur_width).into()),
+                rows_per_image: Some(cur_height.into()),
             },
             cur_size,
         );

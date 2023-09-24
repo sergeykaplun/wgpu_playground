@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-wgpu = "0.15.0"
+wgpu = "0.17.0"
 env_logger = "0.10.0"
 pollster = "0.3.0"
 bytemuck = { version = "1.12", features = [ "derive" ] }
@@ -15,7 +15,7 @@ log = "0.4.17"
 structopt = "0.3.26"
 nalgebra-glm = "0.18.0"
 rand = "0.8.5"
-tobj = { version = "3.2.1", features = [
+tobj = { version = "4.0.0", features = [
    "async",
 ]}
 gltf = "1.0.0"
@@ -23,9 +23,10 @@ anyhow = "1.0.69"
 image = { version = "0.24.5", features = ["png"] }
 ncollide2d = "0.33.0"
 base64 = "0.21.0"
-imgui = "0.10.0"
-imgui-wgpu = "0.22.0"
+imgui = "0.11.0"
+imgui-wgpu = "0.24.0"
 ktx = "0.3.2"
+wgpu-profiler = "0.14.2"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 winit = "0.28.3"

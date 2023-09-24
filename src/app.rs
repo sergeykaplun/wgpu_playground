@@ -14,6 +14,7 @@ pub trait App<T: ResourceManager> {
     }
     fn new(
         sc: &wgpu::SurfaceConfiguration,
+        adapter: &wgpu::Adapter,
         device: &wgpu::Device,
         queue: Queue,
         shader_type: ShaderType,

@@ -71,8 +71,8 @@ pub trait ResourceManager {
             img_data,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(8 * texture_size.width),
-                rows_per_image: std::num::NonZeroU32::new(texture_size.height),
+                bytes_per_row: Some((8 * texture_size.width).into()),
+                rows_per_image: Some(texture_size.height.into())
             },
             Extent3d {
                 width: texture_size.width,
