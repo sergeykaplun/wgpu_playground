@@ -1,4 +1,5 @@
 use std::{collections::VecDeque, path::Path};
+use std::time::{Duration, Instant};
 
 use wgpu::{InstanceDescriptor, Backends, RequestAdapterOptions, Limits, DeviceDescriptor, TextureUsages, SurfaceConfiguration};
 use winit::{event_loop::{EventLoop, ControlFlow}, event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode}, window::Icon};
@@ -24,10 +25,11 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
         let (icon_width, icon_height) = icon.dimensions();
         window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))
     }
-    
+
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
-        backends: Backends::all(),
+        //backends: Backends::all(),
+        backends: Backends::DX12,
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
     let surface = unsafe{ instance.create_surface(&window).ok().unwrap() };
@@ -68,6 +70,11 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
     let mut fps_data = VecDeque::new();
     let mut latest_fps_print = std::time::Instant::now();
     let mut input_event = InputEvent::default();
+
+    const TARGET_FPS: u32 = 240;
+    let frame_duration = Duration::from_secs(1) / TARGET_FPS;
+    let mut last_frame_time = Instant::now();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
 
@@ -125,12 +132,19 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
                 input_event = new_event;
             }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                match app_instance.render(&surface, &device) {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => app_instance.resize(&surface_config, &device),
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                    Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
-                };
+                let now = Instant::now();
+                let elapsed_time = now - last_frame_time;
+
+                //if elapsed_time >= frame_duration
+                {
+                    last_frame_time = now;
+                    match app_instance.render(&surface, &device) {
+                        Ok(_) => {}
+                        Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => app_instance.resize(&surface_config, &device),
+                        Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                        Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
+                    };
+                }
             }
             _ => {}
         }
