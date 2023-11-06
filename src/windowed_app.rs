@@ -95,7 +95,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
             latest_fps_print = std::time::Instant::now();
         }
 
-        app_instance.tick(delta);
+        app_instance.tick(&device,delta);
         
         match event {
             Event::MainEventsCleared => window.request_redraw(),

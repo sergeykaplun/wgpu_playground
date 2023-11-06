@@ -22,6 +22,11 @@ struct Constants {
     target_density: f32,// = 20.75;
     pressure_multiplier: f32,// = 0.5;
     _padding: vec2<f32>,
+
+    group_width: u32,
+    group_height: u32,
+    step_index: u32,
+    _padding2: u32,
 };
 
 @group(0) @binding(0) var<uniform> constants: Constants;
@@ -51,6 +56,11 @@ fn bound(uv: vec2<f32>) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    if (true)
+    {
+        return vec4(mix(vec3(0.0), vec3<f32>(0.8, 0.125, 0.2), bound(in.uv)), 1.0);
+    }
+
     //var clr = vec3<f32>(0.05, 0.2, 1.) * calc_density(in.uv) * 0.025;
     //let pressure = convert_density_to_pressure(calc_density(in.uv));
     let dens = calc_density(in.uv) - constants.target_density;
@@ -64,7 +74,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //return vec4(clr, 1.0);
 
 
-    {
+    if(false){
         //TODO fix
         let cells_cnt = 2.;
         let cell_span = 1./cells_cnt;

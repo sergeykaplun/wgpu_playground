@@ -88,7 +88,7 @@ impl<T: ResourceManager> App<T> for SkyboxExample{
         false
     }
 
-    fn tick(&mut self, delta: f32) {
+    fn tick(&mut self, device: &wgpu::Device, delta: f32) {
         self.camera.tick(delta, &self.renderer.queue)
     }
 }

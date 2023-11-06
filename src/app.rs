@@ -26,7 +26,7 @@ pub trait App<T: ResourceManager> {
     }
 
     fn resize(&mut self, _sc: &wgpu::SurfaceConfiguration, _device: &wgpu::Device) {}
-    fn tick(&mut self, _delta: f32) {}
+    fn tick(&mut self, device: &wgpu::Device, _delta: f32) {}
     fn render(
         &mut self,
         frame: &wgpu::Surface,

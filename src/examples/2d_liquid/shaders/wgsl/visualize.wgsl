@@ -25,6 +25,11 @@ struct Constants {
     target_density: f32,
     pressure_multiplier: f32,
     _padding: vec2<f32>,
+
+    group_width: u32,
+    group_height: u32,
+    step_index: u32,
+    _padding2: u32,
 };
 
 @group(0) @binding(0) var<uniform> constants: Constants;
@@ -35,6 +40,15 @@ struct VertexOutput {
     @location(0) clr: vec3<f32>,
     @location(1) dist: f32,
 };
+
+fn palette(h: f32) -> vec3<f32> {
+    var col =    vec3(0.0,0.3,1.0);
+    col = mix(col, vec3(1.0,0.8,0.0), smoothstep(0.13, 0.53, h));
+    col = mix(col, vec3(1.0,0.0,0.0), smoothstep(0.46, 0.86, h));
+    col.y += 0.5*(1.0-smoothstep(0.0, 0.2, abs(h - f32(0.33))));
+    col *= 0.5 + 0.5*h;
+    return col;
+}
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
@@ -70,7 +84,9 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     //offset /= vec2(constants.aspect, 1.0);
 
     out.clip_pos = vec4<f32>((particle_pos + offset)/vec2(constants.aspect, 1.0) * 0.2, 0.0, 1.0);
-    out.clr = vec3<f32>(1.0, 1.0, 0.0);
+    let speed = length(particle_data[particle_id].vel);
+    out.clr = palette(speed/1.0);
+    //out.clr = vec3<f32>(1.0, 1.0, 0.0);
     return out;
 }
 
