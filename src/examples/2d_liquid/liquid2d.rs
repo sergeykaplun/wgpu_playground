@@ -89,6 +89,8 @@ impl Liquid2DExample {
     const SOLVER_FPS: f32 = 30f32;
     const SOLVER_DELTA_TIME: f32 = 1f32 / Self::SOLVER_FPS;
     const PARTICLES_CNT: usize = 4096;
+    const WORKGROUP_SIZE: usize = 256;
+    const WORKGROUP_CNT: u32 = ((Self::PARTICLES_CNT + Self::WORKGROUP_SIZE - 1) / Self::WORKGROUP_SIZE) as u32;
     const SIM_BOUNDS: [f32; 2] = [16., 9.];
     const PARTICLE_RADIUS: f32 = 0.05;
     const DEFAULT_GRAVITY: [f32; 2] = [0.0, -9.8];
@@ -712,7 +714,7 @@ impl Liquid2DExample {
             cp.set_pipeline(&self.renderer.particles_pre_update_pso);
             cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
             cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
         }
         self.renderer.queue.submit(iter::once(encoder.finish()));
     }
@@ -726,7 +728,7 @@ impl Liquid2DExample {
             cp.set_pipeline(&self.renderer.compute_particle_densities_pso);
             cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
             cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
         }
         self.renderer.queue.submit(iter::once(encoder.finish()));
     }
@@ -740,7 +742,7 @@ impl Liquid2DExample {
             cp.set_pipeline(&self.renderer.apply_particles_pressure_pso);
             cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
             cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
         }
         self.renderer.queue.submit(iter::once(encoder.finish()));
     }
@@ -754,7 +756,7 @@ impl Liquid2DExample {
             cp.set_pipeline(&self.renderer.update_particles_positions_pso);
             cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
             cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
         }
         self.renderer.queue.submit(iter::once(encoder.finish()));
     }
