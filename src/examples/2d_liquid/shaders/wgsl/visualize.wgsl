@@ -2,8 +2,8 @@ const TAU: f32 = 6.283185307179586476925286766559;
 
 struct Particle {
     pos: vec2<f32>,
+    predicted_pos: vec2<f32>,
     vel: vec2<f32>,
-
     density: f32,
     _padding: f32,
 };
@@ -24,7 +24,11 @@ struct Constants {
 
     target_density: f32,
     pressure_multiplier: f32,
-    _padding: vec2<f32>,
+    pointer_location: vec2<f32>,
+
+    resolution: vec2<f32>,
+    pointer_active: f32,
+    pointer_attract: f32,
 
     group_width: u32,
     group_height: u32,
@@ -62,7 +66,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     //let SEGMENT_SPAN = TAU / f32(constants.particle_segments);
     let SEGMENT_SPAN = TAU / 24.0;
 
-    let particle_pos: vec2<f32> = particle_data[particle_id].pos;
+    let particle_pos: vec2<f32> = particle_data[particle_id].pos;// - vec2(8., 4.5);
     var offset = vec2<f32>(0.0, 0.0);
     switch (vertex_id) {
         case 0u: {

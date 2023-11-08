@@ -1,7 +1,9 @@
 use std::iter;
 use std::convert::Into;
+use std::default::Default;
 use std::mem::size_of;
 use std::time::Duration;
+use glm::sqrt;
 use imgui::Context;
 use wgpu::{Adapter, BindGroupLayout, BlendState, BufferAddress, ColorTargetState, ComputePassDescriptor, ComputePipeline, Device, FragmentState, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipeline, RenderPipelineDescriptor, ShaderSource, Surface, SurfaceConfiguration, SurfaceError, TextureFormat, VertexState};
 use wgpu::BufferBindingType::{Storage, Uniform};
@@ -18,13 +20,14 @@ use crate::input_event::{EventType, InputEvent};
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Particle {
     position: [f32; 2],
+    predicted_pos: [f32; 2],
     velocity: [f32; 2],
     density: f32,
     _padding: f32,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Default, Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Constants {
     gravity: [f32; 2],
     smoothing_radius: f32,
@@ -41,7 +44,11 @@ struct Constants {
 
     target_density: f32,// = 20.75;
     pressure_multiplier: f32,// = 0.5;
-    _padding: [f32; 2],
+    pointer_location: [f32; 2],
+
+    resolution: [f32; 2],
+    pointer_active: f32,
+    pointer_attract: f32,
 
     group_width: u32,
     group_height: u32,
@@ -58,8 +65,11 @@ struct Renderer {
     draw_particles_pso: RenderPipeline,
 
     particle_read_write_bg: wgpu::BindGroup,
-    process_particles_pso: ComputePipeline,
     overlay_pso: RenderPipeline,
+    particles_pre_update_pso: ComputePipeline,
+    compute_particle_densities_pso: ComputePipeline,
+    apply_particles_pressure_pso: ComputePipeline,
+    update_particles_positions_pso: ComputePipeline,
 
     spatial_lookup_bg: wgpu::BindGroup,
     compute_spatial_lookup_cp: ComputePipeline,
@@ -75,6 +85,21 @@ pub struct Liquid2DExample {
     constants: Constants,
 }
 
+impl Liquid2DExample {
+    const SOLVER_FPS: f32 = 30f32;
+    const SOLVER_DELTA_TIME: f32 = 1f32 / Self::SOLVER_FPS;
+    const PARTICLES_CNT: usize = 4096;
+    const SIM_BOUNDS: [f32; 2] = [16., 9.];
+    const PARTICLE_RADIUS: f32 = 0.05;
+    const DEFAULT_GRAVITY: [f32; 2] = [0.0, -9.8];
+    const DEFAULT_PARTICLE_MASS: f32 = 1.;
+    const DEFAULT_PARTICLE_SEGMENTS: u32 = 24;
+    const DEFAULT_DAMPING: f32 = 0.95;
+    const DEFAULT_SMOOTHING_RADIUS: f32 = 0.3;
+    const DEFAULT_TARGET_DENSITY: f32 = 1.5;
+    const DEFAULT_PRESSURE_MULTIPLIER: f32 = 1.1;
+}
+
 impl<T: ResourceManager> App<T> for Liquid2DExample {
     fn new(sc: &SurfaceConfiguration, adapter: &Adapter, device: &Device, queue: Queue, shader_type: ShaderType, resource_manager: &T) -> Self {
         let mut imgui_context = imgui::Context::create();
@@ -85,18 +110,20 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
             ..Default::default()
         });
 
-        let PARTICLE_RADIUS = 0.05;
-        let SPACING = PARTICLE_RADIUS * 1.5;
-        let PARTICLES_PER_ROW = 70f32;
-        let SPAWN_W = (PARTICLE_RADIUS + SPACING) * PARTICLES_PER_ROW;
-        let SPAWN_H = (PARTICLE_RADIUS + SPACING) * (Self::PARTICLES_CNT as f32 / PARTICLES_PER_ROW).ceil();
-
+        let particles_per_row = (Self::PARTICLES_CNT as f32).sqrt().floor() as i32;
+        let particles_per_col = (Self::PARTICLES_CNT - 1) as i32 / particles_per_row + 1i32;
+        let particle_spacing = 1.;
+        let spacing = Self::PARTICLE_RADIUS * 2.0 * particle_spacing;
         let buffer: [Particle; Self::PARTICLES_CNT] = (0..Self::PARTICLES_CNT).map(|i|{
+            let x = ((((i as i32) % particles_per_row - particles_per_row / 2) as f32) + 0.5) * spacing;
+            let y = ((((i as i32) / particles_per_row - particles_per_col / 2) as f32) + 0.5) * spacing;
+            //let x = rand::random::<f32>() * Self::SIM_BOUNDS[0] - Self::SIM_BOUNDS[0] / 2.;
+            //let y = rand::random::<f32>() * Self::SIM_BOUNDS[1] - Self::SIM_BOUNDS[1] / 2.;
             Particle{
-                position: [SPAWN_W * -0.5 + (i % PARTICLES_PER_ROW as usize) as f32 * (PARTICLE_RADIUS + SPACING),
-                           SPAWN_H * -0.5 + (i / PARTICLES_PER_ROW as usize) as f32 * (PARTICLE_RADIUS + SPACING)],
-                velocity: [0.0, 0.0],
+                position: [x, y],
+                velocity: [0.0; 2],
                 density: 0.0,
+                predicted_pos: [0.0; 2],
                 _padding: 0.0,
             }
         }).collect::<Vec<_>>().try_into().unwrap();
@@ -264,23 +291,19 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
         });
 
         let constants = Constants{
-            gravity: [0.0, -9.8],
-            smoothing_radius: 0.3,  //0.35
-            particle_mass: 1.,
-            particle_segments: 24,
+            gravity: Self::DEFAULT_GRAVITY,
+            smoothing_radius: Self::DEFAULT_SMOOTHING_RADIUS,
+            particle_mass: Self::DEFAULT_PARTICLE_MASS,
+            particle_segments: Self::DEFAULT_PARTICLE_SEGMENTS,
             aspect: sc.width as f32 / sc.height as f32,
-            delta_time: 0.0,
-            particle_radius: PARTICLE_RADIUS, //0.0125,
+            particle_radius: Self::PARTICLE_RADIUS,
             bounds_size: Self::SIM_BOUNDS,
-            damping: 0.95,
+            damping: Self::DEFAULT_DAMPING,
             particles_count: Self::PARTICLES_CNT as u32,
-            target_density: 1.5, //20.75,
-            pressure_multiplier: 0.2,
-            _padding: [0.0; 2],
-            group_width: 0,
-            group_height: 0,
-            step_index: 0,
-            _padding2: 0,
+            target_density: Self::DEFAULT_TARGET_DENSITY,
+            pressure_multiplier: Self::DEFAULT_PRESSURE_MULTIPLIER,
+            resolution: [sc.width as f32, sc.height as f32],
+            ..Default::default()
         };
         let constants_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Constants Buffer"),
@@ -309,7 +332,8 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
             }],
         });
 
-        let process_particles_pso = Self::create_process_particles_pso(device, &constants_bgl, &particle_data_write_bgl);
+        //let process_particles_pso = Self::create_process_particles_pso(device, &constants_bgl, &particle_data_write_bgl);
+        let (particles_pre_update_pso, compute_particle_densities_pso, apply_particles_pressure_pso, update_particles_positions_pso) = Self::create_particles_update_psos(device, &constants_bgl, &particle_data_write_bgl);
         let draw_particles_pso = Self::create_draw_particles_pso(device, sc.format, shader_type, &constants_bgl, &particle_data_read_bgl);
         let overlay_pso = Self::create_overlay_pso(device, sc.format, &constants_bgl, &particle_data_read_bgl);
         let compute_spatial_lookup_cp = Self::create_spatial_lookup_pso(device, &constants_bgl, &spatial_lookup_bgl);
@@ -317,9 +341,9 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
         let sort_lookup_cp = Self::create_sort_lookup_pso(device, &constants_bgl, &spatial_lookup_bgl);
 
         let renderer = Renderer{ queue, constants_buffer, constants_bg, particles_buffer,
-                                 particle_read_bg, draw_particles_pso, particle_read_write_bg,
-                                 process_particles_pso, overlay_pso, spatial_lookup_bg,
-                                 compute_spatial_lookup_cp, write_start_indices_cp, sort_lookup_cp,
+                                 particle_read_bg, draw_particles_pso, particle_read_write_bg, overlay_pso,
+                                 particles_pre_update_pso, compute_particle_densities_pso, apply_particles_pressure_pso, update_particles_positions_pso,
+                                 spatial_lookup_bg, compute_spatial_lookup_cp, write_start_indices_cp, sort_lookup_cp,
                                  imgui_context, imgui_renderer };
         Liquid2DExample{ renderer, constants }
     }
@@ -331,16 +355,28 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
         if self.constants.delta_time > Self::SOLVER_DELTA_TIME {
             self.solver_step(device);
         }
+        //if self.constants.delta_time > 0.05 {
+        //    self.constants.delta_time = 0.05;
+        //    self.solver_step(device);
+        //}
         //self.constants.time += delta;
     }
 
     fn process_input(&mut self, event: &InputEvent) -> bool {
         match event.event_type {
-            EventType::Move => self.renderer.imgui_context.io_mut().mouse_pos = [event.coords[0] as f32, event.coords[1] as f32],
-            EventType::Start => {
-                self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = true;
+            EventType::Move => {
+                self.renderer.imgui_context.io_mut().mouse_pos = [event.coords[0], event.coords[1]];
+                self.constants.pointer_location = event.coords;
             },
-            EventType::End => self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = false,
+            EventType::Start(btn) => {
+                self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = true;
+                self.constants.pointer_active = 1.0;
+                self.constants.pointer_attract = btn as f32;
+            },
+            EventType::End => {
+                self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = false;
+                self.constants.pointer_active = 0.0;
+            },
             EventType::None => (),
         };
         false
@@ -389,10 +425,10 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
             ui.window("Settings")
                 .size([100.0, 50.0], imgui::Condition::FirstUseEver)
                 .build(|| {
-                    ui.slider("Smoothing rad", 0., 3., &mut self.constants.smoothing_radius);
-                    ui.slider("Particle mass", 0., 10., &mut self.constants.particle_mass);
+                    ui.slider("Smoothing rad", 0.01, 3., &mut self.constants.smoothing_radius);
+                    ui.slider("Particle mass", 0.01, 10., &mut self.constants.particle_mass);
                     ui.slider("Target density", 0., 10., &mut self.constants.target_density);
-                    ui.slider("Pressure multiplier", 0., 10., &mut self.constants.pressure_multiplier);
+                    ui.slider("Pressure multiplier", 0., 30., &mut self.constants.pressure_multiplier);
                 });
             let draw_data = self.renderer.imgui_context.render();
             self.renderer.imgui_renderer.render(draw_data, &self.renderer.queue, device, &mut render_pass).unwrap();
@@ -407,14 +443,6 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
 }
 
 impl Liquid2DExample {
-    const SOLVER_FPS: f32 = 15f32;
-    const SOLVER_DELTA_TIME: f32 = 1f32/Self::SOLVER_FPS;
-    //const PARTICLES_CNT: usize = 1000;
-    const PARTICLES_CNT: usize = 4096;
-    const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
-    const SIM_BOUNDS: [f32; 2] = [16., 9.];
-    //const SIM_BOUNDS: [f32; 2] = [2.; 2];
-
     fn create_draw_particles_pso(device: &Device, tex_format: TextureFormat, shader_type: ShaderType, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> RenderPipeline {
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Visualize particle shader module"),
@@ -459,7 +487,7 @@ impl Liquid2DExample {
         })
     }
 
-    fn create_process_particles_pso(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> ComputePipeline {
+    /*fn create_process_particles_pso(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> ComputePipeline {
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Process particles shader module"),
             source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/process.wgsl").into()),
@@ -477,6 +505,48 @@ impl Liquid2DExample {
             module: &shader_module,
             entry_point: "process_particles",
         })
+    }*/
+
+    fn create_particles_update_psos(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> (ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline) {
+        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Process particles shader module"),
+            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/process.wgsl").into()),
+        });
+
+        let rpl = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Process Particles Pipeline Layout"),
+            bind_group_layouts: &[constants_bgl, particle_data_bgl],
+            push_constant_ranges: &[],
+        });
+
+        //particles_pre_update_pso, compute_particle_densities_pso, apply_particles_pressure_pso, update_particles_positions_pso
+
+        (
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor{
+                label: Some("Particles PreUpdate Pipeline"),
+                layout: Some(&rpl),
+                module: &shader_module,
+                entry_point: "calculate_predicted_pos",
+            }),
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor{
+                label: Some("Calculate Particle Densities Pipeline"),
+                layout: Some(&rpl),
+                module: &shader_module,
+                entry_point: "calculate_particle_densities",
+            }),
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor{
+                label: Some("Apply Particles Pressure Pipeline"),
+                layout: Some(&rpl),
+                module: &shader_module,
+                entry_point: "apply_particles_pressure",
+            }),
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor{
+                label: Some("Update Particles Positions Pipeline"),
+                layout: Some(&rpl),
+                module: &shader_module,
+                entry_point: "update_particles_positions",
+            })
+        )
     }
 
     fn create_spatial_lookup_pso(device: &Device, constants_bgl: &BindGroupLayout, spatial_lookup_bgl: &BindGroupLayout) -> ComputePipeline {
@@ -609,6 +679,87 @@ impl Liquid2DExample {
 
     fn solver_step(&mut self, device: &Device) {
         self.renderer.queue.write_buffer(&self.renderer.constants_buffer, 0, bytemuck::cast_slice(&[self.constants]));
+        self.update_particles_velocities(device);
+        //self.update_spatial_lookup(device);
+        self.calculate_particle_densities(device);
+        self.apply_particle_pressure(device);
+        self.update_particles_positions(device);
+
+        /*let mut encoder = device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Write spatial lookup encoder"),
+            });
+        {
+            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                label: Some("Process Particles Compute Pass"),
+            });
+            cp.set_pipeline(&self.renderer.process_particles_pso);
+            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
+            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+        }
+
+        self.renderer.queue.submit(iter::once(encoder.finish()));*/
+        self.constants.delta_time = 0f32;
+    }
+
+    fn update_particles_velocities(&mut self, device: &Device) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                label: Some("Update Particle Velocities Compute Pass"),
+            });
+            cp.set_pipeline(&self.renderer.particles_pre_update_pso);
+            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
+            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+        }
+        self.renderer.queue.submit(iter::once(encoder.finish()));
+    }
+
+    fn calculate_particle_densities(&mut self, device: &Device) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                label: Some("Calculate Particle Densities Compute Pass"),
+            });
+            cp.set_pipeline(&self.renderer.compute_particle_densities_pso);
+            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
+            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+        }
+        self.renderer.queue.submit(iter::once(encoder.finish()));
+    }
+
+    fn apply_particle_pressure(&mut self, device: &Device) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                label: Some("Apply Particle pressure Compute Pass"),
+            });
+            cp.set_pipeline(&self.renderer.apply_particles_pressure_pso);
+            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
+            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+        }
+        self.renderer.queue.submit(iter::once(encoder.finish()));
+    }
+
+    fn update_particles_positions(&mut self, device: &Device) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                label: Some("Update Particle positions Compute Pass"),
+            });
+            cp.set_pipeline(&self.renderer.update_particles_positions_pso);
+            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
+            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+        }
+        self.renderer.queue.submit(iter::once(encoder.finish()));
+    }
+
+    fn update_spatial_lookup(&mut self, device: &Device) {
         {
             let mut encoder = device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -625,7 +776,26 @@ impl Liquid2DExample {
             }
             self.renderer.queue.submit(iter::once(encoder.finish()));
         }
+        self.bitonic_sort(device);
+        {
+            let mut encoder = device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Process particles encoder"),
+                });
+            {
+                let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                    label: Some("Write start indices compute pass"),
+                });
+                cp.set_pipeline(&self.renderer.write_start_indices_cp);
+                cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+                cp.set_bind_group(1, &self.renderer.spatial_lookup_bg, &[]);
+                cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
+            }
+            self.renderer.queue.submit(iter::once(encoder.finish()));
+        }
+    }
 
+    fn bitonic_sort(&mut self, device: &Device) {
         let num_pairs = Self::next_power_of_two(Self::PARTICLES_CNT as u32) / 2;
         let num_stages = ((num_pairs * 2) as f32).log(2.0) as u32;
 
@@ -643,7 +813,7 @@ impl Liquid2DExample {
                         label: Some("Bitonic sort encoder"),
                     });
                 {
-                    let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                    let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor {
                         label: Some("Bitonic step compute pass"),
                     });
                     cp.set_pipeline(&self.renderer.sort_lookup_cp);
@@ -656,33 +826,6 @@ impl Liquid2DExample {
                 self.renderer.queue.submit(iter::once(encoder.finish()));
             }
         }
-
-        let mut encoder = device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Process particles encoder"),
-            });
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Write start indices compute pass"),
-            });
-            cp.set_pipeline(&self.renderer.write_start_indices_cp);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.spatial_lookup_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
-        }
-
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Process Particles Compute Pass"),
-            });
-            cp.set_pipeline(&self.renderer.process_particles_pso);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
-        }
-
-        self.renderer.queue.submit(iter::once(encoder.finish()));
-        self.constants.delta_time = 0f32;
     }
 
     fn local_bitonic_merge_sort(&mut self, h: u32, device: &Device, workgroup_count: u32) {

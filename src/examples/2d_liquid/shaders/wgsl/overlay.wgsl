@@ -1,5 +1,6 @@
 struct Particle {
     pos: vec2<f32>,
+    predicted_pos: vec2<f32>,
     vel: vec2<f32>,
     density: f32,
     _padding: f32,
@@ -21,7 +22,11 @@ struct Constants {
 
     target_density: f32,// = 20.75;
     pressure_multiplier: f32,// = 0.5;
-    _padding: vec2<f32>,
+    pointer_location: vec2<f32>,
+
+    resolution: vec2<f32>,
+    pointer_active: f32,
+    pointer_attract: f32,
 
     group_width: u32,
     group_height: u32,
@@ -58,7 +63,13 @@ fn bound(uv: vec2<f32>) -> f32 {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (true)
     {
-        return vec4(mix(vec3(0.0), vec3<f32>(0.8, 0.125, 0.2), bound(in.uv)), 1.0);
+        var bounds = mix(vec3(0.0), vec3<f32>(0.8, 0.125, 0.2), bound(in.uv));
+        if (constants.pointer_active > 0.0)
+        {
+            let pl = (constants.pointer_location/constants.resolution * 2.0 - 1.0) * 5.0 * vec2(constants.aspect, -1.0);
+            bounds = mix(bounds, vec3(0.0, 1.0, 0.0), smoothstep(0.05, 0.025, distance(distance(in.uv, pl), 2.0)));
+        }
+        return vec4(bounds, 1.0);
     }
 
     //var clr = vec3<f32>(0.05, 0.2, 1.) * calc_density(in.uv) * 0.025;

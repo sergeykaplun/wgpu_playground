@@ -1,9 +1,10 @@
+use winit::event::MouseButton;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use winit::event::WindowEvent;
 
 #[derive(Clone)]
 pub enum EventType {
-    Start,
+    Start(u32),
     Move,
     End,
     None
@@ -22,7 +23,7 @@ impl InputEvent {
     pub(crate) fn new(event_type: i32, x: f32, y: f32) -> InputEvent {
         InputEvent {
             event_type: match event_type {
-                0 => EventType::Start,
+                0 => EventType::Start(0),
                 1 => EventType::End,
                 2 => EventType::Move,
                 _ => EventType::None
@@ -52,7 +53,7 @@ impl InputEvent {
             WindowEvent::MouseInput { button, state, .. } => {
                 match state {
                     ElementState::Pressed => {
-                        InputEvent{ event_type: EventType::Start, coords: [0.0, 0.0] }
+                        InputEvent{ event_type: EventType::Start(match button { MouseButton::Left => 0, _ => 1}), coords: [0.0, 0.0] }
                     },
                     ElementState::Released => {
                         InputEvent{ event_type: EventType::End, coords: [0.0, 0.0] }
