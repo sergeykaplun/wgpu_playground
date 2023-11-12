@@ -27,11 +27,6 @@ struct Constants {
     resolution: vec2<f32>,
     pointer_active: f32,
     pointer_attract: f32,
-
-    group_width: u32,
-    group_height: u32,
-    step_index: u32,
-    _padding2: u32,
 };
 
 struct SpatialLookupItem {
@@ -81,7 +76,6 @@ fn write_start_indices(@builtin(local_invocation_id) localInvocationID: vec3<u32
         start_indices[key] = id;
     }
 }
-
 
 @compute @workgroup_size(128, 1, 1)
 fn sort_pairs(@builtin(local_invocation_id) localInvocationID: vec3<u32>, @builtin(workgroup_id) workgroupID: vec3<u32>,

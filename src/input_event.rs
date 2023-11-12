@@ -53,7 +53,7 @@ impl InputEvent {
             WindowEvent::MouseInput { button, state, .. } => {
                 match state {
                     ElementState::Pressed => {
-                        InputEvent{ event_type: EventType::Start(match button { MouseButton::Left => 0, _ => 1}), coords: [0.0, 0.0] }
+                        InputEvent{ event_type: EventType::Start(match button { MouseButton::Left => 0, MouseButton::Right => 1, _ => 2}), coords: [0.0, 0.0] }
                     },
                     ElementState::Released => {
                         InputEvent{ event_type: EventType::End, coords: [0.0, 0.0] }

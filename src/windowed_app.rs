@@ -29,7 +29,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
     let size = window.inner_size();
     let instance = wgpu::Instance::new(InstanceDescriptor{
         //backends: Backends::all(),
-        backends: Backends::DX12,
+        backends: Backends::VULKAN,
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
     let surface = unsafe{ instance.create_surface(&window).ok().unwrap() };
@@ -39,19 +39,26 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
         compatible_surface: Some(&surface),
     }).await.unwrap();
 
-    println!(
-        "Device: {}",
-        adapter.get_info().name
-    );
+    /*println!(
+        "adapter: {}, limits {:?}",
+        adapter.get_info().name, adapter.limits()
+    );*/
     let (device, queue) = adapter
         .request_device(
             &DeviceDescriptor {
                 label: None,
                 features: T::get_extra_device_features(app_variant),
-                limits: Limits::default()
+                limits: Limits {
+                    max_push_constant_size: 256,
+                    ..Limits::default()
+                }
             },
             None
         ).await.unwrap();
+    /*println!(
+        "device limits {:?}, feature: {:?}",
+        device.limits(), device.features()
+    );*/
     let caps = surface.get_capabilities(&adapter);
     let mut surface_config = SurfaceConfiguration { 
         usage: TextureUsages::RENDER_ATTACHMENT,

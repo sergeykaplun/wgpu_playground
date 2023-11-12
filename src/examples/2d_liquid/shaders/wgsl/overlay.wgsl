@@ -27,19 +27,17 @@ struct Constants {
     resolution: vec2<f32>,
     pointer_active: f32,
     pointer_attract: f32,
-
-    group_width: u32,
-    group_height: u32,
-    step_index: u32,
-    _padding2: u32,
 };
 
 @group(0) @binding(0) var<uniform> constants: Constants;
 @group(1) @binding(0) var<storage, read> particle_data: array<Particle>;
+@group(2) @binding(0) var t_bg: texture_2d<f32>;
+@group(2) @binding(1) var s_bg: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
+    @location(1) simulation_space_uv:  vec2<f32>,
 };
 
 @vertex
@@ -47,7 +45,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
     out.uv = vec2<f32>(f32((in_vertex_index << 1u) & 2u), f32(in_vertex_index & 2u));
     out.clip_pos = vec4<f32>(out.uv * 2.0 - 1.0, 0.0, 1.0);
-    out.uv = (out.uv * 2.0 - 1.0) * vec2<f32>(constants.aspect, 1.0) * 5.;
+    out.simulation_space_uv = (out.uv * 2.0 - 1.0) * vec2<f32>(constants.aspect, 1.0) * 5.;
     return out;
 }
 
@@ -59,17 +57,52 @@ fn bound(uv: vec2<f32>) -> f32 {
     return mask;
 }
 
+fn vor(pos: vec2<f32>) -> u32 {
+    var res = 1000.;
+    var res_id = 0u;
+    for (var i = 0u; i < constants.particles_count; i = i + 1u) {
+        let dst = distance(pos, particle_data[i].pos);
+        if (res > dst) {
+            res = dst;
+            res_id = i;
+        }
+        //res = min(res, distance(pos, particle_data[i].pos));
+    }
+    return res_id;
+}
+
+fn palette(h: f32) -> vec3<f32> {
+    var col =    vec3(0.0,0.3,1.0);
+    col = mix(col, vec3(1.0,0.8,0.0), smoothstep(0.13, 0.53, h));
+    col = mix(col, vec3(1.0,0.0,0.0), smoothstep(0.46, 0.86, h));
+    col.y += 0.5*(1.0-smoothstep(0.0, 0.2, abs(h - f32(0.33))));
+    col *= 0.5 + 0.5*h;
+    return col;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (true)
     {
-        var bounds = mix(vec3(0.0), vec3<f32>(0.8, 0.125, 0.2), bound(in.uv));
+        /*let particle_id = vor(in.simulation_space_uv);
+        let particle = particle_data[particle_id];
+        let speed = length(particle.vel);
+        //var clr = mix(palette(smoothstep(0., 2.5, speed)), vec3(0.0), smoothstep(0.1, 0.2, distance(in.uv, particle_data[particle_id].pos)));
+        let bg_uv = particle.pos/5.0 * 1./vec2<f32>(constants.aspect, -1.0) * 0.5 + 0.5;
+        let bg = textureSample(t_bg, s_bg, bg_uv).rgb;
+
+        var clr = 1.0 - vec3(distance(in.simulation_space_uv, particle.pos))/.15;
+        clr = clr * bg;*/
+
+        var clr = vec3(0.0);
+
+        clr = mix(clr, vec3<f32>(0.8, 0.125, 0.2), bound(in.simulation_space_uv));
         if (constants.pointer_active > 0.0)
         {
             let pl = (constants.pointer_location/constants.resolution * 2.0 - 1.0) * 5.0 * vec2(constants.aspect, -1.0);
-            bounds = mix(bounds, vec3(0.0, 1.0, 0.0), smoothstep(0.05, 0.025, distance(distance(in.uv, pl), 2.0)));
+            clr = mix(clr, vec3(0.0, 1.0, 0.0), smoothstep(0.05, 0.025, distance(distance(in.simulation_space_uv, pl), 2.0)));
         }
-        return vec4(bounds, 1.0);
+        return vec4(clr, 1.0);
     }
 
     //var clr = vec3<f32>(0.05, 0.2, 1.) * calc_density(in.uv) * 0.025;

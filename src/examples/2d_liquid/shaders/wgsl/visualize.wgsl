@@ -29,11 +29,6 @@ struct Constants {
     resolution: vec2<f32>,
     pointer_active: f32,
     pointer_attract: f32,
-
-    group_width: u32,
-    group_height: u32,
-    step_index: u32,
-    _padding2: u32,
 };
 
 @group(0) @binding(0) var<uniform> constants: Constants;
@@ -89,7 +84,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
 
     out.clip_pos = vec4<f32>((particle_pos + offset)/vec2(constants.aspect, 1.0) * 0.2, 0.0, 1.0);
     let speed = length(particle_data[particle_id].vel);
-    out.clr = palette(speed/1.0);
+    out.clr = palette(smoothstep(0., 2.5, speed));
     //out.clr = vec3<f32>(1.0, 1.0, 0.0);
     return out;
 }

@@ -29,11 +29,6 @@ struct Constants {
     resolution: vec2<f32>,
     pointer_active: f32,
     pointer_attract: f32,
-
-    group_width: u32,
-    group_height: u32,
-    step_index: u32,
-    _padding2: u32,
 };
 
 struct SpatialLookupItem {
@@ -49,10 +44,7 @@ struct SpatialLookupItem {
 @compute @workgroup_size(256, 1, 1)
 fn calculate_predicted_pos(@builtin(global_invocation_id) globalInvocationID: vec3<u32>) {
     var particle = particle_data[globalInvocationID.x];
-    //particle.vel += constants.gravity * constants.delta_time;
-    if (constants.pointer_active == 1.0) {
-        particle.vel += calculate_interaction_force(particle.pos, particle.vel) * constants.delta_time;
-    }
+    particle.vel += constants.gravity_strength * constants.gravity * constants.delta_time;
     particle.predicted_pos = particle.pos + particle.vel * 1./120.;
     particle_data[globalInvocationID.x] = particle;
 }
@@ -76,6 +68,9 @@ fn apply_particles_pressure(@builtin(global_invocation_id) globalInvocationID: v
 @compute @workgroup_size(256, 1, 1)
 fn update_particles_positions(@builtin(global_invocation_id) globalInvocationID: vec3<u32>) {
     var particle = particle_data[globalInvocationID.x];
+    if (constants.pointer_active == 1.0) {
+        particle.vel += calculate_interaction_force(particle.pos, particle.vel) * constants.delta_time;
+    }
     particle.pos += particle.vel * constants.delta_time;
 
     let half_bounds = constants.bounds_size * 0.5 - constants.particle_radius;
@@ -209,6 +204,26 @@ fn pointer_location() -> vec2<f32>{
 }
 
 fn calculate_interaction_force(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
+    var force = vec2<f32>(0.0);
+    var offset = pointer_location() - pos;
+    if (constants.pointer_attract > 0.0) {
+        offset *= -1.0;
+    }
+    let dist = length(offset);
+
+    let radius = 3.0;
+    let strength = constants.pressure_multiplier * 2.0;
+    if(dist < radius) {
+        let dir_to_pointer = normalize(offset);
+        let cntr = 1.0 - dist / radius;
+        force += (dir_to_pointer * strength - vel) * cntr;
+    }
+
+    return force;
+}
+
+/*
+fn calculate_interaction_force(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     var offset = pointer_location() - pos;
     if (constants.pointer_attract > 0.0) {
         offset *= -1.0;
@@ -218,6 +233,6 @@ fn calculate_interaction_force(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     {
         return vec2(0.0);
     }
-    let strength = smooth_kernel_rad(dist, 3.0) * 30.;
+    let strength = smooth_kernel_rad(dist, 3.0) * constants.pressure_multiplier * 10.;
     return (normalize(-offset) * strength - vel);
-}
+}*/
