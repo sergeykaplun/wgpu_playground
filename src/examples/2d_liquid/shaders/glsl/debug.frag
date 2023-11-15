@@ -7,6 +7,12 @@ layout(set = 0, binding = 0) uniform ConstantsData {
 layout(set = 1, binding = 0) buffer ParticlesData {
     Particle particle_data[];
 };
+layout(set = 1, binding = 1) buffer SpatialLookupData {
+    SpatialLookupItem spatial_lookup[];
+};
+layout(set = 1, binding = 2) buffer StartindicesData {
+    uint start_indices[];
+};
 
 layout(location = 0) in vec2 uv;
 layout(location = 1) in vec2 simulation_space_uv;
@@ -53,7 +59,7 @@ VoronoiRes vor(vec2 pos) {
                 float dst = distance(particle.pos, pos);
                 if (res > dst) {
                     res = dst;
-                    res_id = i;
+                    res_id = particle_index;
                 }
             }
         }
@@ -86,5 +92,9 @@ void main() {
     VoronoiRes vor_res = vor(simulation_space_uv);
     //uint particle_id = vor(simulation_space_uv);
     Particle particle = particle_data[vor_res.id];
-    res = vec4(particle.clr * (1. - distance(simulation_space_uv, particle.pos)/.15), 1.0);
+
+    float speed = length(particle.vel);
+    vec3 clr = particle.clr * (1. - distance(simulation_space_uv, particle.pos)/.15);
+    clr = pow(clr, vec3(1. + 1.5 * smoothstep(0., 2.5, speed)));
+    res = vec4(clr, 1.0);
 }

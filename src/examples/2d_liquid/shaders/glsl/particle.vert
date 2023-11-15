@@ -55,8 +55,8 @@ void main() {
 
     clr = (particle_hash == pointer_hash) ? vec3(1.0, 0.0, 0.0) : vec3(1.0, 1.0, 0.0);*/
 
-    //float speed = length(particle.vel);
-    //clr = palette(smoothstep(0., 2.5, speed));
+    float speed = length(particle.vel);
+    clr = palette(smoothstep(0., 2.5, speed));
 
-    clr = particle.clr;
+    //clr = particle.clr;
 }

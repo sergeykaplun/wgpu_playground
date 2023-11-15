@@ -32,6 +32,11 @@ struct Constants {
     vec2 resolution;
     float pointer_active;
     float pointer_attract;
+
+    float gravity_strength;
+    float viscosity;
+    float animate_strength;
+    float _padding;
 };
 
 struct SortingParams {
@@ -56,6 +61,12 @@ float smooth_kernel_derivative(float dst, float radius) {
     if (dst >= radius) { return 0.0; }
     float scale = 12. / (PI * pow(radius, 4.0));
     return scale * (dst - radius);
+}
+
+float viscosity_smooth_kernel(float dst, float radius) {
+    float vol = PI * pow(radius, 8.0) / 4.0;
+    float val = max(0.0, radius * radius - dst * dst);
+    return val * val * val / vol;
 }
 
 #define DENS_2_PRESS(dens, target_dens, mult) ((dens - target_dens) * mult)

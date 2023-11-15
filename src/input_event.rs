@@ -1,4 +1,4 @@
-use winit::event::MouseButton;
+use winit::event::{MouseButton, MouseScrollDelta, TouchPhase};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use winit::event::WindowEvent;
 
@@ -7,6 +7,7 @@ pub enum EventType {
     Start(u32),
     Move,
     End,
+    Wheel(f32),
     None
 }
 
@@ -50,6 +51,19 @@ impl InputEvent {
         use winit::event::ElementState;
 
         match event {
+            WindowEvent::MouseWheel {delta, phase, ..} => {
+                /*match phase {
+                    TouchPhase::Started => {}
+                    TouchPhase::Moved => {}
+                    TouchPhase::Ended => {}
+                    TouchPhase::Cancelled => {}
+                }*/
+
+                match delta {
+                    MouseScrollDelta::LineDelta(x, y) => InputEvent{ event_type: EventType::Wheel(x.max(y.clone())), coords: [0.0, 0.0] },
+                    MouseScrollDelta::PixelDelta(_) => InputEvent{ event_type: EventType::None, coords: [0.0, 0.0] },
+                }
+            },
             WindowEvent::MouseInput { button, state, .. } => {
                 match state {
                     ElementState::Pressed => {

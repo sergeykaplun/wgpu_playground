@@ -1,10 +1,11 @@
-use std::{iter, mem};
-use std::convert::Into;
+use std::cmp::max;
+use std::iter;
 use std::default::Default;
 use std::mem::size_of;
 use std::time::Duration;
 use imgui::Context;
-use wgpu::{Adapter, BindGroupLayout, BlendState, BufferAddress, ColorTargetState, ComputePassDescriptor, ComputePipeline, Device, Features, FragmentState, include_spirv_raw, PipelineLayoutDescriptor, PrimitiveState, PushConstantRange, Queue, RenderPipeline, RenderPipelineDescriptor, Sampler, ShaderModule, ShaderSource, ShaderStages, Surface, SurfaceConfiguration, SurfaceError, Texture, TextureFormat, TextureView, VertexState};
+use wgpu::{Adapter, BindGroupLayout, BlendState, BufferAddress, ColorTargetState, ComputePassDescriptor, ComputePipeline, Device, Features, FragmentState, include_spirv_raw, PipelineLayoutDescriptor, PrimitiveState, PushConstantRange, Queue, RenderPipeline, RenderPipelineDescriptor, Sampler, ShaderModule, ShaderStages, Surface, SurfaceConfiguration, SurfaceError, TextureFormat, TextureView, VertexState};
+use wgpu::BlendFactor::Constant;
 use wgpu::BufferBindingType::{Storage, Uniform};
 use wgpu::Face::Back;
 use wgpu::FrontFace::Ccw;
@@ -42,18 +43,18 @@ struct Constants {
     damping: f32,
     particles_count: u32,
 
-    target_density: f32,// = 20.75;
-    pressure_multiplier: f32,// = 0.5;
+    target_density: f32,
+    pressure_multiplier: f32,
     pointer_location: [f32; 2],
 
     resolution: [f32; 2],
     pointer_active: f32,
     pointer_attract: f32,
 
-    /*group_width: u32,
-    group_height: u32,
-    step_index: u32,
-    gravity_strength: f32,*/
+    gravity_strength: f32,
+    viscosity: f32,
+    animate_strength: f32,
+    _padding: f32
 }
 
 #[repr(C)]
@@ -80,6 +81,7 @@ struct Renderer {
     apply_particles_pressure_pso: ComputePipeline,
     update_particles_positions_pso: ComputePipeline,
     update_clr_and_target_pos_pso: ComputePipeline,
+    apply_viscosity_pso: ComputePipeline,
     animate_pso: ComputePipeline,
 
     spatial_lookup_bg: wgpu::BindGroup,
@@ -102,18 +104,19 @@ pub struct Liquid2DExample {
 impl Liquid2DExample {
     const SOLVER_FPS: f32 = 30f32;
     const SOLVER_DELTA_TIME: f32 = 1f32 / Self::SOLVER_FPS;
-    const PARTICLES_CNT: usize = 4096;
+    const PARTICLES_CNT: usize = 1024;
     const WORKGROUP_SIZE: usize = 256;
     const WORKGROUP_CNT: u32 = ((Self::PARTICLES_CNT + Self::WORKGROUP_SIZE - 1) / Self::WORKGROUP_SIZE) as u32;
-    const SIM_BOUNDS: [f32; 2] = [16., 9.];
+    const SIM_BOUNDS: [f32; 2] = [12., 9.];
     const PARTICLE_RADIUS: f32 = 0.065;
     const DEFAULT_GRAVITY: [f32; 2] = [0.0, -9.8];
     const DEFAULT_PARTICLE_MASS: f32 = 1.;
     const DEFAULT_PARTICLE_SEGMENTS: u32 = 24;
     const DEFAULT_DAMPING: f32 = 0.95;
     const DEFAULT_SMOOTHING_RADIUS: f32 = 0.35;
-    const DEFAULT_TARGET_DENSITY: f32 = 5.2;//1.5;
-    const DEFAULT_PRESSURE_MULTIPLIER: f32 = 1.1;
+    const DEFAULT_TARGET_DENSITY: f32 = 1.5;
+    const DEFAULT_PRESSURE_MULTIPLIER: f32 = 5.;
+    const DEFAULT_VISCOSITY: f32 = 0.5;
 }
 
 impl<T: ResourceManager> App<T> for Liquid2DExample {
@@ -122,6 +125,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
     }
 
     fn new(sc: &SurfaceConfiguration, adapter: &Adapter, device: &Device, queue: Queue, shader_type: ShaderType, resource_manager: &T) -> Self {
+        println!("Adapter: {:?}", adapter.get_info());
         println!("Device's max push constant size: {}", device.limits().max_push_constant_size);
         println!("Adapter's max push constant size: {}", adapter.limits().max_push_constant_size);
 
@@ -234,7 +238,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
             entries: &[
                 wgpu::BindGroupLayoutEntry{
                     binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: Storage {
                             read_only: false,
@@ -246,7 +250,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 },
                 wgpu::BindGroupLayoutEntry{
                     binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: Storage {
                             read_only: true,
@@ -258,7 +262,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 },
                 wgpu::BindGroupLayoutEntry{
                     binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: Storage {
                             read_only: true,
@@ -363,6 +367,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
             target_density: Self::DEFAULT_TARGET_DENSITY,
             pressure_multiplier: Self::DEFAULT_PRESSURE_MULTIPLIER,
             resolution: [sc.width as f32, sc.height as f32],
+            viscosity: Self::DEFAULT_VISCOSITY,
             ..Default::default()
         };
         let constants_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -394,10 +399,11 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
 
         //let process_particles_pso = Self::create_process_particles_pso(device, &constants_bgl, &particle_data_write_bgl);
         let (particles_pre_update_pso, compute_particle_densities_pso,
-             apply_particles_pressure_pso, update_particles_positions_pso, animate_pso) = Self::create_particles_update_psos(device, &constants_bgl, &particle_data_write_bgl);
+             apply_particles_pressure_pso, update_particles_positions_pso,
+            animate_pso, apply_viscosity_pso) = Self::create_particles_update_psos(device, &constants_bgl, &particle_data_write_bgl);
         let update_clr_and_target_pos_pso = Self::create_particles_update_clr_and_target_pos(device, &constants_bgl, &particle_data_write_bgl, &bg_bgl);
         let draw_particles_pso = Self::create_draw_particles_pso(device, sc.format, shader_type, &constants_bgl, &particle_data_read_bgl);
-        let overlay_pso = Self::create_overlay_pso(device, sc.format, &constants_bgl, &particle_data_read_bgl, &bg_bgl);
+        let overlay_pso = Self::create_overlay_pso(device, sc.format, &constants_bgl, &particle_data_write_bgl, &bg_bgl);
         let compute_spatial_lookup_cp = Self::create_spatial_lookup_pso(device, &constants_bgl, &spatial_lookup_bgl);
         let write_start_indices_cp = Self::create_start_indices_pso(device, &constants_bgl, &spatial_lookup_bgl);
         let sort_lookup_cp = Self::create_sort_lookup_pso(device, &constants_bgl, &spatial_lookup_bgl);
@@ -405,7 +411,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
         let renderer = Renderer{ queue, constants_buffer, constants_bg, particles_buffer,
                                  particle_read_bg, draw_particles_pso, bg_bg, particle_read_write_bg, overlay_pso,
                                  particles_pre_update_pso, compute_particle_densities_pso, apply_particles_pressure_pso,
-                                 update_particles_positions_pso, update_clr_and_target_pos_pso, animate_pso,
+                                 update_particles_positions_pso, update_clr_and_target_pos_pso, apply_viscosity_pso, animate_pso,
                                  spatial_lookup_bg, compute_spatial_lookup_cp, write_start_indices_cp, sort_lookup_cp,
                                  imgui_context, imgui_renderer };
         Liquid2DExample{ renderer, constants, sort_params: BitonicSortParams::default(), should_update_colors_and_pos: false, animate: false }
@@ -432,7 +438,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 self.constants.pointer_location = event.coords;
             },
             EventType::Start(btn) => {
-                if btn == 1 {
+                if btn == 2 {
                     self.should_update_colors_and_pos = true;
                 } else {
                     self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = true;
@@ -444,6 +450,12 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 self.renderer.imgui_context.io_mut().mouse_down[0 as usize] = false;
                 self.constants.pointer_active = 0.0;
             },
+            EventType::Wheel(delta) => {
+                //self.constants.animate_strength = (delta * 3.).clamp(0.0, 10.);
+                self.constants.animate_strength += (delta * 0.2 - 0.1);
+                self.constants.animate_strength = self.constants.animate_strength.max(0f32);
+                println!("Wheel delta: {}", self.constants.animate_strength);
+            }
             EventType::None => (),
         };
         false
@@ -478,16 +490,16 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 depth_stencil_attachment: None
             });
 
-            render_pass.set_pipeline(&self.renderer.overlay_pso);
+            /*render_pass.set_pipeline(&self.renderer.overlay_pso);
             render_pass.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            render_pass.set_bind_group(1, &self.renderer.particle_read_bg, &[]);
+            render_pass.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
             render_pass.set_bind_group(2, &self.renderer.bg_bg, &[]);
-            render_pass.draw(0..3, 0..1);
+            render_pass.draw(0..3, 0..1);*/
 
-            /*render_pass.set_pipeline(&self.renderer.draw_particles_pso);
+            render_pass.set_pipeline(&self.renderer.draw_particles_pso);
             render_pass.set_bind_group(0, &self.renderer.constants_bg, &[]);
             render_pass.set_bind_group(1, &self.renderer.particle_read_bg, &[]);
-            render_pass.draw(0..Self::PARTICLES_CNT as u32 * 3 * self.constants.particle_segments, 0..1);*/
+            render_pass.draw(0..Self::PARTICLES_CNT as u32 * 3 * self.constants.particle_segments, 0..1);
 
             let ui = self.renderer.imgui_context.frame();
             ui.window("Settings")
@@ -497,7 +509,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                     ui.slider("Particle mass", 0.01, 10., &mut self.constants.particle_mass);
                     ui.slider("Target density", 0., 10., &mut self.constants.target_density);
                     ui.slider("Pressure multiplier", 0., 30., &mut self.constants.pressure_multiplier);
-                    //ui.slider("Gravity", 0., 1., &mut self.constants.gravity_strength);
+                    ui.slider("Gravity", 0., 1., &mut self.constants.gravity_strength);
                 });
             let draw_data = self.renderer.imgui_context.render();
             self.renderer.imgui_renderer.render(draw_data, &self.renderer.queue, device, &mut render_pass).unwrap();
@@ -577,7 +589,7 @@ impl Liquid2DExample {
         })
     }*/
 
-    fn create_particles_update_psos(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> (ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline) {
+    fn create_particles_update_psos(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> (ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline) {
         let mut spirv_modules = vec![];
         unsafe {
             spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/update_predicted_pos.cs.spv")));
@@ -585,6 +597,7 @@ impl Liquid2DExample {
             spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/apply_pressure.cs.spv")));
             spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/update_positions.cs.spv")));
             spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/animate.cs.spv")));
+            spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/apply_viscosity.cs.spv")));
         }
         /*let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Process particles shader module"),
@@ -626,6 +639,12 @@ impl Liquid2DExample {
                 label: Some("Animate Particles Positions Pipeline"),
                 layout: Some(&rpl),
                 module: &spirv_modules[4],
+                entry_point: "main",
+            }),
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor{
+                label: Some("Apply viscosity Pipeline"),
+                layout: Some(&rpl),
+                module: &spirv_modules[5],
                 entry_point: "main",
             }),
         )
@@ -832,6 +851,20 @@ impl Liquid2DExample {
             cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
         }
         encoder.pop_debug_group();
+
+
+        encoder.push_debug_group("Apply viscosity");
+        {
+            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
+                label: Some("Apply viscosity Compute Pass"),
+            });
+            cp.set_pipeline(&self.renderer.apply_viscosity_pso);
+            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
+            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
+            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
+        }
+        encoder.pop_debug_group();
+
 
         if self.animate {
             //encoder.push_debug_group("Animate particles");
@@ -1087,8 +1120,8 @@ impl Liquid2DExample {
     }*/
 
     fn create_bg(device: &Device, queue: &Queue) -> (TextureView, Sampler) {
-        let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/the_lovers_2.jpg")).unwrap();
-        //let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/Magritte_TheSonOfMan.jpg")).unwrap();
+        //let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/the_lovers_2.jpg")).unwrap();
+        let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg")).unwrap();
         let bg_rgba = bg_image.to_rgba8();
 
         let bg_size = wgpu::Extent3d {

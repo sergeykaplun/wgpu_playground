@@ -44,6 +44,8 @@ vec2 calc_pressure_force(uint particle_index) {
                     float density = other_particle.density;
                     float shared_pressure = (DENS_2_PRESS(density, constants.target_density, constants.pressure_multiplier)
                                            + DENS_2_PRESS(cur_particle.density, constants.target_density, constants.pressure_multiplier)) * 0.5;
+                    float shared_pressure = (DENS_2_PRESS(density, p, constants.pressure_multiplier)
+                                           + DENS_2_PRESS(cur_particle.density, p, constants.pressure_multiplier)) * 0.5;
                     pressure_force += shared_pressure * dir * slope * constants.particle_mass / density;
                 }
             }
