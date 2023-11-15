@@ -20,10 +20,7 @@ float calc_density(vec2 sample_point) {
     for(int i = -1; i <= 1; i++) {
         for(int j = -1; j <= 1; j++) {
             ivec2 cell_coord = center + ivec2(i, j);
-            //TODO enable
-            //if(any(cell_coord < vec2(0)) && any(cell_coord >= vec2<i32>(ceil(constants.bounds_size / constants.smoothing_radius)))) {
-            //    continue;
-            //}
+            //TODO: check if cell is out of bounds
             uint hash = CELL_HASH(cell_coord);
             uint key = CELL_KEY(hash);
 
@@ -43,20 +40,6 @@ float calc_density(vec2 sample_point) {
     }
     return density * constants.particle_mass;
 }
-
-/*
-float calc_density(vec2 sample_point) {
-    float density = 0.0;
-    for (uint i = 0; i < constants.particles_count; i++) {
-        Particle particle = particle_data[i];
-        float dist = distance(sample_point, particle.pos);
-        float influence = smooth_kernel(dist, constants.smoothing_radius);
-
-        density += constants.particle_mass * influence;
-    }
-    return density;
-}
-*/
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 void main() {

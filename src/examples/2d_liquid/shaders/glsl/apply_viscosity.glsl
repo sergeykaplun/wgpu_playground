@@ -21,10 +21,7 @@ vec2 calc_viscosity_force(uint particleIndex) {
     for(int i = -1; i <= 1; i++) {
         for(int j = -1; j <= 1; j++) {
             ivec2 cell_coord = center + ivec2(i, j);
-            //TODO enable
-            //if(any(cell_coord < vec2(0)) && any(cell_coord >= vec2<i32>(ceil(constants.bounds_size / constants.smoothing_radius)))) {
-            //    continue;
-            //}
+            //TODO: check if cell is out of bounds
             uint hash = CELL_HASH(cell_coord);
             uint key = CELL_KEY(hash);
 
@@ -33,7 +30,7 @@ vec2 calc_viscosity_force(uint particleIndex) {
                 if(spatial_lookup[i].cell_key != key)  break;
                 uint other_particle_index = spatial_lookup[i].particle_id;
                 Particle other_particle = particle_data[other_particle_index];
-                //TODO pos instead of predicted_pos
+                //TODO pos instead of predicted_pos???
                 float dst = distance(other_particle.pos, particle.pos);
                 float influence = viscosity_smooth_kernel(dst, constants.smoothing_radius);
                 viscosityForce += (other_particle.vel - particle.vel) * influence;

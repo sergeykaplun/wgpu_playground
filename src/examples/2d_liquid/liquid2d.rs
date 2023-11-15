@@ -1,11 +1,9 @@
-use std::cmp::max;
 use std::iter;
 use std::default::Default;
 use std::mem::size_of;
 use std::time::Duration;
 use imgui::Context;
 use wgpu::{Adapter, BindGroupLayout, BlendState, BufferAddress, ColorTargetState, ComputePassDescriptor, ComputePipeline, Device, Features, FragmentState, include_spirv_raw, PipelineLayoutDescriptor, PrimitiveState, PushConstantRange, Queue, RenderPipeline, RenderPipelineDescriptor, Sampler, ShaderModule, ShaderStages, Surface, SurfaceConfiguration, SurfaceError, TextureFormat, TextureView, VertexState};
-use wgpu::BlendFactor::Constant;
 use wgpu::BufferBindingType::{Storage, Uniform};
 use wgpu::Face::Back;
 use wgpu::FrontFace::Ccw;
@@ -104,7 +102,7 @@ pub struct Liquid2DExample {
 impl Liquid2DExample {
     const SOLVER_FPS: f32 = 30f32;
     const SOLVER_DELTA_TIME: f32 = 1f32 / Self::SOLVER_FPS;
-    const PARTICLES_CNT: usize = 1024;
+    const PARTICLES_CNT: usize = 2048;
     const WORKGROUP_SIZE: usize = 256;
     const WORKGROUP_CNT: u32 = ((Self::PARTICLES_CNT + Self::WORKGROUP_SIZE - 1) / Self::WORKGROUP_SIZE) as u32;
     const SIM_BOUNDS: [f32; 2] = [12., 9.];
@@ -397,7 +395,6 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
             }],
         });
 
-        //let process_particles_pso = Self::create_process_particles_pso(device, &constants_bgl, &particle_data_write_bgl);
         let (particles_pre_update_pso, compute_particle_densities_pso,
              apply_particles_pressure_pso, update_particles_positions_pso,
             animate_pso, apply_viscosity_pso) = Self::create_particles_update_psos(device, &constants_bgl, &particle_data_write_bgl);
@@ -424,11 +421,6 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
         if self.constants.delta_time > Self::SOLVER_DELTA_TIME {
             self.solver_step(device);
         }
-        //if self.constants.delta_time > 0.05 {
-        //    self.constants.delta_time = 0.05;
-        //    self.solver_step(device);
-        //}
-        //self.constants.time += delta;
     }
 
     fn process_input(&mut self, event: &InputEvent) -> bool {
@@ -451,10 +443,8 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 self.constants.pointer_active = 0.0;
             },
             EventType::Wheel(delta) => {
-                //self.constants.animate_strength = (delta * 3.).clamp(0.0, 10.);
                 self.constants.animate_strength += (delta * 0.2 - 0.1);
                 self.constants.animate_strength = self.constants.animate_strength.max(0f32);
-                println!("Wheel delta: {}", self.constants.animate_strength);
             }
             EventType::None => (),
         };
@@ -462,9 +452,6 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
     }
 
     fn render(&mut self, frame: &Surface, device: &Device) -> Result<(), SurfaceError> {
-        //self.renderer.queue.write_buffer(&self.renderer.constants_buffer, 0, bytemuck::cast_slice(&[self.constants]));
-        //self.solver_step(device);
-
         let output = frame.get_current_texture()?;
         let mut encoder = device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -490,16 +477,16 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 depth_stencil_attachment: None
             });
 
-            /*render_pass.set_pipeline(&self.renderer.overlay_pso);
+            render_pass.set_pipeline(&self.renderer.overlay_pso);
             render_pass.set_bind_group(0, &self.renderer.constants_bg, &[]);
             render_pass.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
             render_pass.set_bind_group(2, &self.renderer.bg_bg, &[]);
-            render_pass.draw(0..3, 0..1);*/
+            render_pass.draw(0..3, 0..1);
 
-            render_pass.set_pipeline(&self.renderer.draw_particles_pso);
+            /*render_pass.set_pipeline(&self.renderer.draw_particles_pso);
             render_pass.set_bind_group(0, &self.renderer.constants_bg, &[]);
             render_pass.set_bind_group(1, &self.renderer.particle_read_bg, &[]);
-            render_pass.draw(0..Self::PARTICLES_CNT as u32 * 3 * self.constants.particle_segments, 0..1);
+            render_pass.draw(0..Self::PARTICLES_CNT as u32 * 3 * self.constants.particle_segments, 0..1);*/
 
             let ui = self.renderer.imgui_context.frame();
             ui.window("Settings")
@@ -517,8 +504,6 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
 
         self.renderer.queue.submit(iter::once(encoder.finish()));
         output.present();
-
-        //self.constants.delta_time = 0f32;
         Ok(())
     }
 }
@@ -569,26 +554,6 @@ impl Liquid2DExample {
         })
     }
 
-    /*fn create_process_particles_pso(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> ComputePipeline {
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Process particles shader module"),
-            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/process.wgsl").into()),
-        });
-
-        let rpl = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("Process Particles Pipeline Layout"),
-            bind_group_layouts: &[constants_bgl, particle_data_bgl],
-            push_constant_ranges: &[],
-        });
-
-        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor{
-            label: Some("Process Particles Pipeline"),
-            layout: Some(&rpl),
-            module: &shader_module,
-            entry_point: "process_particles",
-        })
-    }*/
-
     fn create_particles_update_psos(device: &Device, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout) -> (ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline, ComputePipeline) {
         let mut spirv_modules = vec![];
         unsafe {
@@ -599,10 +564,6 @@ impl Liquid2DExample {
             spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/animate.cs.spv")));
             spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/apply_viscosity.cs.spv")));
         }
-        /*let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Process particles shader module"),
-            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/process.wgsl").into()),
-        });*/
 
         let rpl = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("Process Particles Pipeline Layout"),
@@ -671,10 +632,6 @@ impl Liquid2DExample {
     }
 
     fn create_spatial_lookup_pso(device: &Device, constants_bgl: &BindGroupLayout, /*sort_params_bgl: &BindGroupLayout,*/spatial_lookup_bgl: &BindGroupLayout) -> ComputePipeline {
-        /*let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Create spatial lookup shader module"),
-            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/spatial_lookup.wgsl").into()),
-        });*/
         let mut spirv_module = vec![];
         unsafe {
             spirv_module.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/write_spatial_lookup.cs.spv")));
@@ -695,10 +652,6 @@ impl Liquid2DExample {
     }
 
     fn create_start_indices_pso(device: &Device, constants_bgl: &BindGroupLayout, /*sort_params_bgl: &BindGroupLayout, */spatial_lookup_bgl: &BindGroupLayout) -> ComputePipeline {
-        /*let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Write start indices shader module"),
-            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/spatial_lookup.wgsl").into()),
-        });*/
         let mut spirv_module = vec![];
         unsafe {
             spirv_module.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/write_start_indices.cs.spv")));
@@ -719,11 +672,6 @@ impl Liquid2DExample {
     }
 
     fn create_sort_lookup_pso(device: &Device, constants_bgl: &BindGroupLayout, /*sort_params_bgl: &BindGroupLayout, */spatial_lookup_bgl: &BindGroupLayout) -> ComputePipeline {
-        /*let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Sort lookup shader module"),
-            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/spatial_lookup.wgsl").into()),
-            //source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/bitonic_sort.wgsl").into()),
-        });*/
         let mut spirv_module = vec![];
         unsafe {
             spirv_module.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/sort_pairs.cs.spv")));
@@ -743,21 +691,15 @@ impl Liquid2DExample {
             layout: Some(&rpl),
             module: &spirv_module[0],
             entry_point: "main",
-            //entry_point: "sort",
-            //entry_point: "bitonic_sort_pairs",
         })
     }
 
     fn create_overlay_pso(device: &Device, tex_format: TextureFormat, constants_bgl: &BindGroupLayout, particle_data_bgl: &BindGroupLayout, bg_bgl: &BindGroupLayout) -> RenderPipeline {
         let mut spirv_modules : Vec<ShaderModule> = vec![];
         unsafe {
-            spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/debug.vs.spv")));
-            spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/debug.fs.spv")));
+            spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/voronoi.vs.spv")));
+            spirv_modules.push(device.create_shader_module_spirv(&include_spirv_raw!("shaders/spirv/voronoi.fs.spv")));
         };
-        /*let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Process particles shader module"),
-            source: ShaderSource::Wgsl(include_str!("./shaders/wgsl/overlay.wgsl").into()),
-        });*/
 
         let rpl = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("Process Particles Pipeline Layout"),
@@ -961,166 +903,10 @@ impl Liquid2DExample {
         }
         encoder.pop_debug_group();
         self.renderer.queue.submit(iter::once(encoder.finish()));
-        /*self.update_particles_velocities(device);
-        self.update_spatial_lookup(device);
-        self.calculate_particle_densities(device);
-        self.apply_particle_pressure(device);
-        self.update_particles_positions(device);*/
-
         self.constants.delta_time = 0f32;
     }
-/*
-    fn update_particles_velocities(&mut self, device: &Device) {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Update Particle Velocities Compute Pass"),
-            });
-            cp.set_pipeline(&self.renderer.particles_pre_update_pso);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
-        }
-        self.renderer.queue.submit(iter::once(encoder.finish()));
-    }
-
-    fn calculate_particle_densities(&mut self, device: &Device) {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Calculate Particle Densities Compute Pass"),
-            });
-            cp.set_pipeline(&self.renderer.compute_particle_densities_pso);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
-        }
-        self.renderer.queue.submit(iter::once(encoder.finish()));
-    }
-
-    fn apply_particle_pressure(&mut self, device: &Device) {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Apply Particle pressure Compute Pass"),
-            });
-            cp.set_pipeline(&self.renderer.apply_particles_pressure_pso);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
-        }
-        self.renderer.queue.submit(iter::once(encoder.finish()));
-    }
-
-    fn update_particles_positions(&mut self, device: &Device) {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Update Particle positions Compute Pass"),
-            });
-            cp.set_pipeline(&self.renderer.update_particles_positions_pso);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
-            cp.dispatch_workgroups(Self::WORKGROUP_CNT, 1, 1);
-        }
-        self.renderer.queue.submit(iter::once(encoder.finish()));
-    }
-
-    fn update_spatial_lookup(&mut self, device: &Device) {
-        let mut encoder = device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Spatial lookup encoder"),
-            });
-        encoder.push_debug_group("Write spatial lookup");
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Write spatial lookup compute pass"),
-            });
-            cp.set_pipeline(&self.renderer.compute_spatial_lookup_cp);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.spatial_lookup_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
-        }
-        encoder.pop_debug_group();
-
-        encoder.push_debug_group("Bitonic sort");
-        {
-            let num_pairs = Self::next_power_of_two(Self::PARTICLES_CNT as u32) / 2;
-            let num_stages = ((num_pairs * 2) as f32).log(2.0) as u32;
-
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor {
-                label: Some("Bitonic steps compute pass"),
-            });
-            cp.set_pipeline(&self.renderer.sort_lookup_cp);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.spatial_lookup_bg, &[]);
-
-            for stage_index in 0..num_stages {
-                for step_index in 0..(stage_index + 1) {
-                    let group_width = 1 << (stage_index - step_index);
-                    let group_height = 2 * group_width - 1;
-                    self.sort_params.group_width = group_width;
-                    self.sort_params.group_height = group_height;
-                    self.sort_params.step_index = step_index;
-                    cp.set_push_constants(0, bytemuck::cast_slice(&[self.sort_params]));
-                    cp.dispatch_workgroups(num_pairs as u32 / 128, 1, 1);
-                }
-            }
-        }
-        encoder.pop_debug_group();
-        encoder.push_debug_group("Write start indices");
-        {
-            let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor{
-                label: Some("Write start indices compute pass"),
-            });
-            cp.set_pipeline(&self.renderer.write_start_indices_cp);
-            cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-            cp.set_bind_group(1, &self.renderer.spatial_lookup_bg, &[]);
-            cp.dispatch_workgroups(Self::PARTICLES_CNT as u32, 1, 1);
-        }
-        encoder.pop_debug_group();
-
-        self.renderer.queue.submit(iter::once(encoder.finish()));
-    }
-*/
-    /*fn bitonic_sort(&mut self, device: &Device) {
-        let num_pairs = Self::next_power_of_two(Self::PARTICLES_CNT as u32) / 2;
-        let num_stages = ((num_pairs * 2) as f32).log(2.0) as u32;
-
-        let mut steps = 0;
-        for stage_index in 0..num_stages {
-            for step_index in 0..(stage_index + 1) {
-                let group_width = 1 << (stage_index - step_index);
-                let group_height = 2 * group_width - 1;
-
-                self.sort_params.group_width = group_width;
-                self.sort_params.group_height = group_height;
-                self.sort_params.step_index = step_index;
-                //self.renderer.queue.write_buffer(&self.renderer.constants_buffer, 0, bytemuck::cast_slice(&[self.constants]));
-
-                let mut encoder = device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Bitonic sort encoder"),
-                    });
-                {
-                    let mut cp = encoder.begin_compute_pass(&ComputePassDescriptor {
-                        label: Some("Bitonic step compute pass"),
-                    });
-                    cp.set_pipeline(&self.renderer.sort_lookup_cp);
-                    cp.set_bind_group(0, &self.renderer.constants_bg, &[]);
-                    cp.set_bind_group(1, &self.renderer.spatial_lookup_bg, &[]);
-                    cp.set_push_constants(0, bytemuck::cast_slice(&[self.sort_params]));
-                    cp.dispatch_workgroups(num_pairs as u32 / 128, 1, 1);
-                }
-                self.renderer.queue.submit(iter::once(encoder.finish()));
-                steps += 1;
-            }
-        }
-        println!("Steps: {}", steps);
-    }*/
 
     fn create_bg(device: &Device, queue: &Queue) -> (TextureView, Sampler) {
-        //let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/the_lovers_2.jpg")).unwrap();
         let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg")).unwrap();
         let bg_rgba = bg_image.to_rgba8();
 
@@ -1168,20 +954,6 @@ impl Liquid2DExample {
             ..Default::default()
         });
         let bg_texture_view = bg_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        /*let bg = device.create_bind_group(&BindGroupDescriptor{
-            label: Some("BG tv 0"),
-            layout: bgl,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&checker_texture_view),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&checker_sampler),
-                }
-            ],
-        });*/
         (bg_texture_view, bg_sampler)
     }
 }

@@ -43,10 +43,7 @@ VoronoiRes vor(vec2 pos) {
     for(int i = -1; i <= 1; i++) {
         for(int j = -1; j <= 1; j++) {
             ivec2 cell_coord = center + ivec2(i, j);
-            //TODO enable
-            //if(any(cell_coord < vec2(0)) && any(cell_coord >= vec2<i32>(ceil(constants.bounds_size / constants.smoothing_radius)))) {
-            //    continue;
-            //}
+            //TODO: check if cell is out of bounds
             uint hash = CELL_HASH(cell_coord);
             uint key = CELL_KEY(hash);
 
@@ -65,32 +62,10 @@ VoronoiRes vor(vec2 pos) {
         }
     }
     return VoronoiRes(res, res_id);
-
-    /*float res = 1000.;
-    uint res_id = 0;
-    for (uint i = 0; i < constants.particles_count; i++) {
-        float dst = distance(pos, particle_data[i].pos);
-        if (res > dst) {
-            res = dst;
-            res_id = i;
-        }
-    }
-    return VoronoiRes(res, res_id);*/
 }
 
 void main() {
-    /*vec3 clr = vec3(.1) * grid();
-    clr = mix(clr, vec3(0.8, 0.125, 0.2), bound(simulation_space_uv));
-    if (constants.pointer_active > 0.0)
-    {
-        vec2 pl = (constants.pointer_location/constants.resolution * 2.0 - 1.0) * 5.0 * vec2(constants.aspect, -1.0);
-        clr = mix(clr, vec3(0.0, 1.0, 0.0), smoothstep(0.005, 0.0025, distance(distance(simulation_space_uv, pl), constants.smoothing_radius)));
-    }
-    res = vec4(clr, 1.0);
-    */
-
     VoronoiRes vor_res = vor(simulation_space_uv);
-    //uint particle_id = vor(simulation_space_uv);
     Particle particle = particle_data[vor_res.id];
 
     float speed = length(particle.vel);
