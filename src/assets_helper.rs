@@ -36,7 +36,7 @@ pub trait ResourceManager {
     }
     fn load_obj_model(&self, file_name: &str, device: &wgpu::Device) -> anyhow::Result<Vec<Mesh>>;
     fn empty_tex(&self, device: &Device, queue: &Queue) -> TextureView {
-        self.load_tex_2d_ktx(device, queue,&include_ktx!("../assets/textures/papermill.ktx")).create_view(&wgpu::TextureViewDescriptor::default())
+        self.load_tex_2d_ktx(device, queue,&include_ktx!("../assets/empty.ktx")).create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     fn load_tex_2d_ktx(&self, device: &Device, queue: &Queue, ktx_image: &Ktx<&[u8]>) -> Texture {
