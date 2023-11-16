@@ -21,7 +21,7 @@ pub async fn run<T: App<DesktopResourceManager> + 'static>(title: &str, app_vari
         },
     };
     //let window = winit::window::WindowBuilder::new().with_inner_size(winit::dpi::PhysicalSize::new(1920, 1080)).with_title(title).build(&event_loop).unwrap();
-    let window = winit::window::WindowBuilder::new().with_inner_size(winit::dpi::PhysicalSize::new(2040, 1530)).with_title(title).build(&event_loop).unwrap();
+    let window = winit::window::WindowBuilder::new().with_inner_size(winit::dpi::PhysicalSize::new(2082/2, 2560/2)).with_title(title).build(&event_loop).unwrap();
     if let Some(icon) = icon {
         let (icon_width, icon_height) = icon.dimensions();
         window.set_window_icon(Some(Icon::from_rgba(icon.clone().into_raw(), icon_width, icon_height).unwrap()))

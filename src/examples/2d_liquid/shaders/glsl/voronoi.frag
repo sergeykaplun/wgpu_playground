@@ -69,7 +69,7 @@ void main() {
     Particle particle = particle_data[vor_res.id];
 
     float speed = length(particle.vel);
-    vec3 clr = particle.clr * (1. - distance(simulation_space_uv, particle.pos)/.15);
+    vec3 clr = particle.clr * (1. - distance(simulation_space_uv, particle.pos)/.075);
     clr = pow(clr, vec3(1. + 1.5 * smoothstep(0., 2.5, speed)));
     res = vec4(clr, 1.0);
 }

@@ -73,7 +73,7 @@ struct Renderer {
 
     bg_bg: wgpu::BindGroup,
     particle_read_write_bg: wgpu::BindGroup,
-    overlay_pso: RenderPipeline,
+    voronoi_pso: RenderPipeline,
     particles_pre_update_pso: ComputePipeline,
     compute_particle_densities_pso: ComputePipeline,
     apply_particles_pressure_pso: ComputePipeline,
@@ -102,10 +102,11 @@ pub struct Liquid2DExample {
 impl Liquid2DExample {
     const SOLVER_FPS: f32 = 30f32;
     const SOLVER_DELTA_TIME: f32 = 1f32 / Self::SOLVER_FPS;
-    const PARTICLES_CNT: usize = 2048;
+    const PARTICLES_CNT: usize = 3000;
     const WORKGROUP_SIZE: usize = 256;
     const WORKGROUP_CNT: u32 = ((Self::PARTICLES_CNT + Self::WORKGROUP_SIZE - 1) / Self::WORKGROUP_SIZE) as u32;
-    const SIM_BOUNDS: [f32; 2] = [12., 9.];
+    //const SIM_BOUNDS: [f32; 2] = [12., 9.];
+    const SIM_BOUNDS: [f32; 2] = [7.32, 9.];
     const PARTICLE_RADIUS: f32 = 0.065;
     const DEFAULT_GRAVITY: [f32; 2] = [0.0, -9.8];
     const DEFAULT_PARTICLE_MASS: f32 = 1.;
@@ -114,7 +115,7 @@ impl Liquid2DExample {
     const DEFAULT_SMOOTHING_RADIUS: f32 = 0.35;
     const DEFAULT_TARGET_DENSITY: f32 = 1.5;
     const DEFAULT_PRESSURE_MULTIPLIER: f32 = 5.;
-    const DEFAULT_VISCOSITY: f32 = 0.5;
+    const DEFAULT_VISCOSITY: f32 = 0.35;
 }
 
 impl<T: ResourceManager> App<T> for Liquid2DExample {
@@ -406,7 +407,8 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
         let sort_lookup_cp = Self::create_sort_lookup_pso(device, &constants_bgl, &spatial_lookup_bgl);
 
         let renderer = Renderer{ queue, constants_buffer, constants_bg, particles_buffer,
-                                 particle_read_bg, draw_particles_pso, bg_bg, particle_read_write_bg, overlay_pso,
+                                 particle_read_bg, draw_particles_pso, bg_bg, particle_read_write_bg,
+            voronoi_pso: overlay_pso,
                                  particles_pre_update_pso, compute_particle_densities_pso, apply_particles_pressure_pso,
                                  update_particles_positions_pso, update_clr_and_target_pos_pso, apply_viscosity_pso, animate_pso,
                                  spatial_lookup_bg, compute_spatial_lookup_cp, write_start_indices_cp, sort_lookup_cp,
@@ -477,7 +479,7 @@ impl<T: ResourceManager> App<T> for Liquid2DExample {
                 depth_stencil_attachment: None
             });
 
-            render_pass.set_pipeline(&self.renderer.overlay_pso);
+            render_pass.set_pipeline(&self.renderer.voronoi_pso);
             render_pass.set_bind_group(0, &self.renderer.constants_bg, &[]);
             render_pass.set_bind_group(1, &self.renderer.particle_read_write_bg, &[]);
             render_pass.set_bind_group(2, &self.renderer.bg_bg, &[]);
@@ -907,7 +909,7 @@ impl Liquid2DExample {
     }
 
     fn create_bg(device: &Device, queue: &Queue) -> (TextureView, Sampler) {
-        let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg")).unwrap();
+        let bg_image = image::load_from_memory(include_bytes!("../../../assets/textures/de-chirico-canto-d-amore.jpg")).unwrap();
         let bg_rgba = bg_image.to_rgba8();
 
         let bg_size = wgpu::Extent3d {
